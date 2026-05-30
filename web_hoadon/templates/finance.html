@@ -1,37 +1,30 @@
 {% extends "base.html" %}
-
-{% block title %}Tai chinh - Hoa Don Manager{% endblock %}
-
+{% block title %}Tai Chinh{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h2><i class="bi bi-cash-stack"></i> Quan ly tai chinh</h2>
+    <h2><i class="bi bi-cash-stack"></i> Quan Ly Tai Chinh</h2>
     <div class="d-flex align-items-center gap-2">
-        <a href="{{ url_for('export_finance', month=month) }}" class="btn btn-success">
-            <i class="bi bi-file-earmark-excel"></i> Xuat Excel
-        </a>
-        <div class="d-flex align-items-center">
-            <label class="me-2">Thang:</label>
-            <input type="month" class="form-control" style="width: 180px;" value="{{ month }}" onchange="window.location.href='/finance?month=' + this.value">
-        </div>
+        <a href="{{ url_for('export_finance', month=month) }}" class="btn btn-success"><i class="bi bi-file-earmark-excel"></i> Xuat Excel</a>
+        <input type="month" class="form-control" style="width:180px" value="{{ month }}" onchange="window.location.href='/finance?month=' + this.value">
     </div>
 </div>
 
 <div class="row mb-4">
     <div class="col-md-4">
         <div class="card stat-card success">
-            <div class="stat-label">Tong doanh thu</div>
+            <div class="text-muted small">Tong Doanh Thu</div>
             <div class="stat-value text-success">{{ "{:,.0f}".format(total_rev) }} VND</div>
         </div>
     </div>
     <div class="col-md-4">
         <div class="card stat-card danger">
-            <div class="stat-label">Tong chi phi</div>
+            <div class="text-muted small">Tong Chi Phi</div>
             <div class="stat-value text-danger">{{ "{:,.0f}".format(total_exp) }} VND</div>
         </div>
     </div>
     <div class="col-md-4">
-        <div class="card stat-card {{ 'success' if profit >= 0 else 'danger' }}">
-            <div class="stat-label">Loi nhuan</div>
+        <div class="card stat-card {% if profit >= 0 %}success{% else %}danger{% endif %}">
+            <div class="text-muted small">Loi Nhuan</div>
             <div class="stat-value">{{ "{:,.0f}".format(profit) }} VND</div>
         </div>
     </div>
@@ -40,44 +33,31 @@
 <div class="row">
     <div class="col-md-6">
         <div class="card mb-4">
-            <div class="card-header bg-white d-flex justify-content-between align-items-center">
-                <h5 class="mb-0 text-success"><i class="bi bi-plus-circle"></i> Doanh thu</h5>
-                <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addRevenueModal">
-                    <i class="bi bi-plus"></i> Them
-                </button>
+            <div class="card-header bg-white d-flex justify-content-between">
+                <h5 class="mb-0 text-success"><i class="bi bi-plus-circle"></i> Doanh Thu</h5>
+                <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addRevenueModal"><i class="bi bi-plus"></i> Them</button>
             </div>
             <div class="card-body p-0">
                 {% if revenues %}
-                <div class="table-responsive">
-                    <table class="table table-hover mb-0">
-                        <thead>
-                            <tr>
-                                <th>Ngay</th>
-                                <th>Mo ta</th>
-                                <th class="text-end">So tien</th>
-                                <th width="50"></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for rev in revenues %}
-                            <tr>
-                                <td>{{ rev.date }}</td>
-                                <td>{{ rev.description or rev.category }}</td>
-                                <td class="text-end text-success fw-bold">{{ "{:,.0f}".format(rev.amount) }} VND</td>
-                                <td>
-                                    <form method="POST" action="{{ url_for('finance_delete', finance_id=rev.id) }}" onsubmit="return confirm('Xoa?');">
-                                        <button type="submit" class="btn btn-sm btn-outline-danger">
-                                            <i class="bi bi-trash"></i>
-                                        </button>
-                                    </form>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
+                <table class="table table-hover mb-0">
+                    <thead><tr><th>Ngay</th><th>Mo Ta</th><th class="text-end">So Tien</th><th></th></tr></thead>
+                    <tbody>
+                        {% for rev in revenues %}
+                        <tr>
+                            <td>{{ rev.date }}</td>
+                            <td>{{ rev.description or rev.category }}</td>
+                            <td class="text-end text-success fw-bold">{{ "{:,.0f}".format(rev.amount) }} VND</td>
+                            <td>
+                                <form method="POST" action="{{ url_for('finance_delete', finance_id=rev.id) }}" onsubmit="return confirm('Xoa?');">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
                 {% else %}
-                <p class="text-muted text-center p-4 mb-0">Chua co doanh thu nao.</p>
+                <p class="text-muted text-center p-4 mb-0">Chua co doanh thu.</p>
                 {% endif %}
             </div>
         </div>
@@ -85,46 +65,32 @@
 
     <div class="col-md-6">
         <div class="card mb-4">
-            <div class="card-header bg-white d-flex justify-content-between align-items-center">
-                <h5 class="mb-0 text-danger"><i class="bi bi-dash-circle"></i> Chi phi</h5>
-                <button class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#addExpenseModal">
-                    <i class="bi bi-plus"></i> Them
-                </button>
+            <div class="card-header bg-white d-flex justify-content-between">
+                <h5 class="mb-0 text-danger"><i class="bi bi-dash-circle"></i> Chi Phi</h5>
+                <button class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#addExpenseModal"><i class="bi bi-plus"></i> Them</button>
             </div>
             <div class="card-body p-0">
                 {% if expenses %}
-                <div class="table-responsive">
-                    <table class="table table-hover mb-0">
-                        <thead>
-                            <tr>
-                                <th>Ngay</th>
-                                <th>Loai</th>
-                                <th>Ly do</th>
-                                <th class="text-end">So tien</th>
-                                <th width="50"></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for exp in expenses %}
-                            <tr>
-                                <td>{{ exp.date }}</td>
-                                <td>{{ exp.category }}</td>
-                                <td>{{ exp.reason or '-' }}</td>
-                                <td class="text-end text-danger fw-bold">{{ "{:,.0f}".format(exp.amount) }} VND</td>
-                                <td>
-                                    <form method="POST" action="{{ url_for('finance_delete', finance_id=exp.id) }}" onsubmit="return confirm('Xoa?');">
-                                        <button type="submit" class="btn btn-sm btn-outline-danger">
-                                            <i class="bi bi-trash"></i>
-                                        </button>
-                                    </form>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
+                <table class="table table-hover mb-0">
+                    <thead><tr><th>Ngay</th><th>Loai</th><th>Ly Do</th><th class="text-end">So Tien</th><th></th></tr></thead>
+                    <tbody>
+                        {% for exp in expenses %}
+                        <tr>
+                            <td>{{ exp.date }}</td>
+                            <td>{{ exp.category }}</td>
+                            <td>{{ exp.reason or '-' }}</td>
+                            <td class="text-end text-danger fw-bold">{{ "{:,.0f}".format(exp.amount) }} VND</td>
+                            <td>
+                                <form method="POST" action="{{ url_for('finance_delete', finance_id=exp.id) }}" onsubmit="return confirm('Xoa?');">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
                 {% else %}
-                <p class="text-muted text-center p-4 mb-0">Chua co chi phi nao.</p>
+                <p class="text-muted text-center p-4 mb-0">Chua co chi phi.</p>
                 {% endif %}
             </div>
         </div>
@@ -132,24 +98,18 @@
 </div>
 
 <!-- Modal Doanh Thu -->
-<div class="modal fade" id="addRevenueModal" tabindex="-1">
+<div class="modal fade" id="addRevenueModal">
     <div class="modal-dialog">
         <div class="modal-content">
             <form method="POST" action="{{ url_for('finance_add') }}">
                 <div class="modal-header">
-                    <h5 class="modal-title text-success"><i class="bi bi-plus-circle"></i> Them doanh thu</h5>
+                    <h5 class="modal-title text-success">Them Doanh Thu</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <input type="hidden" name="type" value="revenue">
-                    <div class="mb-3">
-                        <label class="form-label">Ngay</label>
-                        <input type="date" class="form-control" name="date" value="{{ month }}-01" required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">So tien</label>
-                        <input type="number" class="form-control" name="amount" min="0" required>
-                    </div>
+                    <div class="mb-3"><label class="form-label">Ngay</label><input type="date" class="form-control" name="date" value="{{ month }}-01" required></div>
+                    <div class="mb-3"><label class="form-label">So tien</label><input type="number" class="form-control" name="amount" min="0" required></div>
                     <div class="mb-3">
                         <label class="form-label">Loai</label>
                         <select class="form-select" name="category">
@@ -158,10 +118,7 @@
                             <option value="Khac">Khac</option>
                         </select>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">Mo ta</label>
-                        <input type="text" class="form-control" name="description" placeholder="Ghi chu them">
-                    </div>
+                    <div class="mb-3"><label class="form-label">Mo ta</label><input type="text" class="form-control" name="description" placeholder="Ghi chu"></div>
                     <input type="hidden" name="reason" value="">
                 </div>
                 <div class="modal-footer">
@@ -174,24 +131,18 @@
 </div>
 
 <!-- Modal Chi Phi -->
-<div class="modal fade" id="addExpenseModal" tabindex="-1">
+<div class="modal fade" id="addExpenseModal">
     <div class="modal-dialog">
         <div class="modal-content">
             <form method="POST" action="{{ url_for('finance_add') }}">
                 <div class="modal-header">
-                    <h5 class="modal-title text-danger"><i class="bi bi-dash-circle"></i> Them chi phi</h5>
+                    <h5 class="modal-title text-danger">Them Chi Phi</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <input type="hidden" name="type" value="expense">
-                    <div class="mb-3">
-                        <label class="form-label">Ngay</label>
-                        <input type="date" class="form-control" name="date" value="{{ month }}-01" required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">So tien</label>
-                        <input type="number" class="form-control" name="amount" min="0" required>
-                    </div>
+                    <div class="mb-3"><label class="form-label">Ngay</label><input type="date" class="form-control" name="date" value="{{ month }}-01" required></div>
+                    <div class="mb-3"><label class="form-label">So tien</label><input type="number" class="form-control" name="amount" min="0" required></div>
                     <div class="mb-3">
                         <label class="form-label">Loai chi phi</label>
                         <select class="form-select" name="category">
@@ -204,14 +155,8 @@
                             <option value="Khac">Khac</option>
                         </select>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">Ly do chi (chi nhung gi?)</label>
-                        <input type="text" class="form-control" name="reason" placeholder="VD: Mua nguyen lieu, Sua may tinh..." required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Mo ta</label>
-                        <input type="text" class="form-control" name="description" placeholder="Ghi chu them">
-                    </div>
+                    <div class="mb-3"><label class="form-label">Ly do chi (chi nhung gi?)</label><input type="text" class="form-control" name="reason" placeholder="VD: Mua nguyen lieu, Sua may tinh..." required></div>
+                    <div class="mb-3"><label class="form-label">Mo ta</label><input type="text" class="form-control" name="description" placeholder="Ghi chu"></div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Huy</button>

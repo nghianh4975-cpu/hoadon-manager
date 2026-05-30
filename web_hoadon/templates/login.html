@@ -1,45 +1,27 @@
 {% extends "base.html" %}
-
-{% block title %}Dang nhap - Hoa Don Manager{% endblock %}
-
+{% block title %}Dang Nhap{% endblock %}
 {% block nav %}{% endblock %}
-
 {% block content %}
 <div class="login-container">
     <div class="login-card">
-        <div class="login-logo">
-            <i class="bi bi-receipt"></i>
-            <h3>Hoa Don Manager</h3>
-            <p class="text-muted">Dang nhap de tiep tuc</p>
+        <div class="text-center mb-4">
+            <i class="bi bi-receipt" style="font-size: 3rem; color: #0078D4;"></i>
+            <h4 class="mt-2">Hoa Don Manager</h4>
+            <p class="text-muted small">Dang nhap de tiep tuc</p>
         </div>
-
-        <form method="POST" action="{{ url_for('login') }}">
+        <form method="POST">
             <div class="mb-3">
                 <label class="form-label">Ten dang nhap</label>
-                <div class="input-group">
-                    <span class="input-group-text"><i class="bi bi-person"></i></span>
-                    <input type="text" class="form-control" name="username" required autofocus placeholder="Nhap ten dang nhap">
-                </div>
+                <input type="text" class="form-control" name="username" required autofocus placeholder="Nhap ten dang nhap">
             </div>
-
             <div class="mb-4">
                 <label class="form-label">Mat khau</label>
-                <div class="input-group">
-                    <span class="input-group-text"><i class="bi bi-lock"></i></span>
-                    <input type="password" class="form-control" name="password" required placeholder="Nhap mat khau">
-                </div>
+                <input type="password" class="form-control" name="password" required placeholder="Nhap mat khau">
             </div>
-
             <button type="submit" class="btn btn-primary w-100 py-2">
-                <i class="bi bi-box-arrow-in-right"></i> Dang nhap
+                <i class="bi bi-box-arrow-in-right"></i> Dang Nhap
             </button>
         </form>
-
-        <div class="text-center mt-4">
-            <small class="text-muted">
-                Quan ly hoa don cho noi bo
-            </small>
-        </div>
     </div>
 </div>
 {% endblock %}

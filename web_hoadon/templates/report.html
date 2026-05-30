@@ -1,30 +1,29 @@
 {% extends "base.html" %}
-
-{% block title %}Bao cao - Hoa Don Manager{% endblock %}
-
+{% block title %}Bao Cao{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h2><i class="bi bi-bar-chart"></i> Bao cao</h2>
-    <a href="{{ url_for('report_export') }}?date_from={{ date_from }}&date_to={{ date_to }}" class="btn btn-success">
-        <i class="bi bi-file-earmark-excel"></i> Xuat Excel
-    </a>
+    <h2><i class="bi bi-bar-chart"></i> Bao Cao</h2>
+    <a href="{{ url_for('report_export') }}?date_from={{ date_from }}&date_to={{ date_to }}&month={{ month }}" class="btn btn-success"><i class="bi bi-file-earmark-excel"></i> Xuat Excel</a>
 </div>
 
 <div class="card mb-4">
     <div class="card-body">
-        <form method="GET" action="{{ url_for('report') }}" class="row g-3">
-            <div class="col-md-4">
+        <form method="GET" class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">Thang</label>
+                <input type="month" class="form-control" name="month" value="{{ month }}">
+            </div>
+            <div class="col-md-3">
                 <label class="form-label">Tu ngay</label>
                 <input type="date" class="form-control" name="date_from" value="{{ date_from }}">
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <label class="form-label">Den ngay</label>
                 <input type="date" class="form-control" name="date_to" value="{{ date_to }}">
             </div>
-            <div class="col-md-4 d-flex align-items-end">
-                <button type="submit" class="btn btn-primary me-2">
-                    <i class="bi bi-search"></i> Tim kiem
-                </button>
+            <div class="col-md-3 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary me-2"><i class="bi bi-search"></i> Tim</button>
+                <a href="{{ url_for('report') }}" class="btn btn-secondary"><i class="bi bi-arrow-clockwise"></i></a>
             </div>
         </form>
     </div>
@@ -33,67 +32,55 @@
 <div class="row mb-4">
     <div class="col-md-3">
         <div class="card stat-card">
-            <div class="stat-label">Tong hoa don</div>
-            <div class="stat-value">{{ "{:,.0f}".format(total_inv) }} VND</div>
+            <div class="text-muted small">Tong Hoa Don</div>
+            <div class="stat-value">{{ "{:,.0f}".format(total_inv) }}</div>
+            <small class="text-success">VND</small>
         </div>
     </div>
     <div class="col-md-3">
         <div class="card stat-card success">
-            <div class="stat-label">Doanh thu</div>
-            <div class="stat-value text-success">{{ "{:,.0f}".format(total_rev) }} VND</div>
+            <div class="text-muted small">Doanh Thu</div>
+            <div class="stat-value text-success">{{ "{:,.0f}".format(total_rev) }}</div>
+            <small>VND</small>
         </div>
     </div>
     <div class="col-md-3">
         <div class="card stat-card danger">
-            <div class="stat-label">Chi phi</div>
-            <div class="stat-value text-danger">{{ "{:,.0f}".format(total_exp) }} VND</div>
+            <div class="text-muted small">Chi Phi</div>
+            <div class="stat-value text-danger">{{ "{:,.0f}".format(total_exp) }}</div>
+            <small>VND</small>
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card stat-card {{ 'success' if profit >= 0 else 'danger' }}">
-            <div class="stat-label">Loi nhuan</div>
-            <div class="stat-value">{{ "{:,.0f}".format(profit) }} VND</div>
+        <div class="card stat-card {% if profit >= 0 %}success{% else %}danger{% endif %}">
+            <div class="text-muted small">Loi Nhuan</div>
+            <div class="stat-value">{{ "{:,.0f}".format(profit) }}</div>
+            <small>VND</small>
         </div>
     </div>
 </div>
 
-<div class="row">
-    <div class="col-md-12">
-        <div class="card">
-            <div class="card-header bg-white">
-                <h5 class="mb-0">Hoa don trong khoang</h5>
-            </div>
-            <div class="card-body p-0">
-                {% if invoices %}
-                <div class="table-responsive">
-                    <table class="table table-hover mb-0">
-                        <thead>
-                            <tr>
-                                <th>So HD</th>
-                                <th>Ngay</th>
-                                <th>Cua hang</th>
-                                <th>Tong tien</th>
-                                <th>Nguoi tao</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for inv in invoices %}
-                            <tr>
-                                <td>{{ inv.invoice_number }}</td>
-                                <td>{{ inv.date }}</td>
-                                <td>{{ inv.store_name or '-' }}</td>
-                                <td class="text-success fw-bold">{{ "{:,.0f}".format(inv.total) }} VND</td>
-                                <td>{{ inv.created_by }}</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-                {% else %}
-                <p class="text-muted text-center p-4 mb-0">Khong co hoa don nao trong khoang nay.</p>
-                {% endif %}
-            </div>
-        </div>
+<div class="card">
+    <div class="card-header bg-white"><h5 class="mb-0">Hoa Don</h5></div>
+    <div class="card-body p-0">
+        {% if invoices %}
+        <table class="table table-hover mb-0">
+            <thead><tr><th>So HD</th><th>Ngay</th><th>Cua Hang</th><th>Tong Tien</th><th>Nguoi Tao</th></tr></thead>
+            <tbody>
+                {% for inv in invoices %}
+                <tr>
+                    <td>{{ inv.invoice_number }}</td>
+                    <td>{{ inv.date }}</td>
+                    <td>{{ inv.store_name or '-' }}</td>
+                    <td class="text-success fw-bold">{{ "{:,.0f}".format(inv.total) }} VND</td>
+                    <td>{{ inv.created_by }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted text-center p-4 mb-0">Khong co hoa don nao.</p>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

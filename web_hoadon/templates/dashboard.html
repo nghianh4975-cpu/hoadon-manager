@@ -1,40 +1,38 @@
 {% extends "base.html" %}
-
-{% block title %}Trang chu - Hoa Don Manager{% endblock %}
-
+{% block title %}Trang Chu{% endblock %}
 {% block content %}
 <div class="page-header">
-    <h2><i class="bi bi-house"></i> Trang chu</h2>
-    <p class="mb-0">Chao mui {{ session.username }}! ({{ session.role|capitalize }})</p>
+    <h2><i class="bi bi-house"></i> Trang Chu</h2>
+    <p class="mb-0">Chao muon {{ session.username }}! ({{ session.role }})</p>
 </div>
 
 <div class="row">
     <div class="col-md-3">
         <div class="card stat-card">
-            <div class="stat-label">Hoa don hom nay</div>
+            <div class="text-muted small">Hoa don hom nay</div>
             <div class="stat-value">{{ today_count }}</div>
-            <small class="text-muted">{{ "{:,.0f}".format(today_total) }} VND</small>
+            <small class="text-success">{{ "{:,.0f}".format(today_total) }} VND</small>
         </div>
     </div>
     <div class="col-md-3">
         <div class="card stat-card success">
-            <div class="stat-label">Hoa don thang nay</div>
+            <div class="text-muted small">Hoa don thang nay</div>
             <div class="stat-value">{{ month_count }}</div>
-            <small class="text-muted">{{ "{:,.0f}".format(month_total) }} VND</small>
+            <small class="text-success">{{ "{:,.0f}".format(month_total) }} VND</small>
         </div>
     </div>
     <div class="col-md-3">
         <div class="card stat-card">
-            <div class="stat-label">Doanh thu thang</div>
+            <div class="text-muted small">Doanh thu thang</div>
             <div class="stat-value text-success">{{ "{:,.0f}".format(month_rev) }}</div>
-            <small class="text-muted">VND</small>
+            <small>VND</small>
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card stat-card {{ 'success' if profit >= 0 else 'danger' }}">
-            <div class="stat-label">Loi nhuan thang</div>
+        <div class="card stat-card {% if profit >= 0 %}success{% else %}danger{% endif %}">
+            <div class="text-muted small">Loi nhuan thang</div>
             <div class="stat-value">{{ "{:,.0f}".format(profit) }}</div>
-            <small class="text-muted">VND</small>
+            <small>VND</small>
         </div>
     </div>
 </div>
@@ -42,43 +40,27 @@
 <div class="row mt-4">
     <div class="col-md-12">
         <div class="card">
-            <div class="card-header bg-white">
-                <h5 class="mb-0"><i class="bi bi-clock-history"></i> Hoa don gan day</h5>
-            </div>
-            <div class="card-body">
+            <div class="card-header bg-white"><h5 class="mb-0">Hoa don gan day</h5></div>
+            <div class="card-body p-0">
                 {% if recent_invoices %}
                 <div class="table-responsive">
-                    <table class="table table-hover">
-                        <thead>
-                            <tr>
-                                <th>So HD</th>
-                                <th>Ngay</th>
-                                <th>Cua hang</th>
-                                <th>Tong</th>
-                                <th>Nguoi tao</th>
-                                <th></th>
-                            </tr>
-                        </thead>
+                    <table class="table table-hover mb-0">
+                        <thead><tr><th>So HD</th><th>Ngay</th><th>Cua Hang</th><th>Tong</th><th></th></tr></thead>
                         <tbody>
                             {% for inv in recent_invoices %}
                             <tr>
                                 <td><strong>{{ inv.invoice_number }}</strong></td>
                                 <td>{{ inv.date }}</td>
                                 <td>{{ inv.store_name or '-' }}</td>
-                                <td class="text-success fw-bold">{{ "{:,.0f}".format(inv.total) }}</td>
-                                <td>{{ inv.created_by }}</td>
-                                <td>
-                                    <a href="{{ url_for('view_invoice', invoice_id=inv.id) }}" class="btn btn-sm btn-outline-primary">
-                                        <i class="bi bi-eye"></i>
-                                    </a>
-                                </td>
+                                <td class="text-success fw-bold">{{ "{:,.0f}".format(inv.total) }} VND</td>
+                                <td><a href="{{ url_for('view_invoice', invoice_id=inv.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a></td>
                             </tr>
                             {% endfor %}
                         </tbody>
                     </table>
                 </div>
                 {% else %}
-                <p class="text-muted text-center mb-0">Chua co hoa don nao.</p>
+                <p class="text-muted text-center p-4 mb-0">Chua co hoa don nao.</p>
                 {% endif %}
             </div>
         </div>
@@ -86,20 +68,17 @@
 </div>
 
 <div class="row mt-4">
-    <div class="col-md-4">
-        <a href="{{ url_for('new_invoice') }}" class="btn btn-primary w-100 py-3">
-            <i class="bi bi-plus-circle"></i> Tao hoa don moi
-        </a>
+    <div class="col-md-3">
+        <a href="{{ url_for('new_invoice') }}" class="btn btn-primary w-100 py-3"><i class="bi bi-plus-circle"></i> Tao Hoa Don</a>
     </div>
-    <div class="col-md-4">
-        <a href="{{ url_for('import_text') }}" class="btn btn-outline-primary w-100 py-3">
-            <i class="bi bi-input-cursor-text"></i> Nhap text xuat Excel
-        </a>
+    <div class="col-md-3">
+        <a href="{{ url_for('import_text') }}" class="btn btn-outline-primary w-100 py-3"><i class="bi bi-input-cursor-text"></i> Nhap Text Xuat Excel</a>
     </div>
-    <div class="col-md-4">
-        <a href="{{ url_for('finance') }}" class="btn btn-outline-success w-100 py-3">
-            <i class="bi bi-cash-stack"></i> Quan ly tai chinh
-        </a>
+    <div class="col-md-3">
+        <a href="{{ url_for('scan_image') }}" class="btn btn-outline-primary w-100 py-3"><i class="bi bi-image"></i> Quet Anh OCR</a>
+    </div>
+    <div class="col-md-3">
+        <a href="{{ url_for('finance') }}" class="btn btn-outline-success w-100 py-3"><i class="bi bi-cash-stack"></i> Tai Chinh</a>
     </div>
 </div>
 {% endblock %}
