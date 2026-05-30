@@ -1,0 +1,18 @@
+{
+  "name": "hoadon-manager",
+  "description": "Web app quản lý hóa đơn",
+  "repository": "https://github.com/YOUR_USERNAME/hoadon-manager",
+  "logo": "",
+  "tags": ["flask", "python", "hoadon"],
+  "regions": ["singapore"],
+  "builder": null,
+  "development": {
+    "location": "automatic"
+  },
+  "envs": {
+    "WEB_CONCURRENCY": {
+      "description": "Number of workers",
+      "value": "2"
+    }
+  }
+}

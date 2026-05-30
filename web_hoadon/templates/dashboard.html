@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block title %}Trang chủ - Hóa Đơn Manager{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2><i class="bi bi-house"></i> Trang chủ</h2>
+    <p class="mb-0">Chào mừng {{ session.username }}! ({{ session.role|capitalize }})</p>
+</div>
+
+<div class="row">
+    <div class="col-md-3">
+        <div class="card stat-card">
+            <div class="stat-label">Hóa đơn hôm nay</div>
+            <div class="stat-value">{{ today_count }}</div>
+            <small class="text-muted">{{ "{:,.0f}".format(today_total) }} VNĐ</small>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card stat-card success">
+            <div class="stat-label">Hóa đơn tháng này</div>
+            <div class="stat-value">{{ month_count }}</div>
+            <small class="text-muted">{{ "{:,.0f}".format(month_total) }} VNĐ</small>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card stat-card">
+            <div class="stat-label">Doanh thu tháng</div>
+            <div class="stat-value text-success">{{ "{:,.0f}".format(month_rev) }}</div>
+            <small class="text-muted">VNĐ</small>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card stat-card {{ 'success' if profit >= 0 else 'danger' }}">
+            <div class="stat-label">Lợi nhuận tháng</div>
+            <div class="stat-value">{{ "{:,.0f}".format(profit) }}</div>
+            <small class="text-muted">VNĐ</small>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header bg-white">
+                <h5 class="mb-0"><i class="bi bi-clock-history"></i> Hóa đơn gần đây</h5>
+            </div>
+            <div class="card-body">
+                {% if recent_invoices %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Số HD</th>
+                                <th>Ngày</th>
+                                <th>Cửa hàng</th>
+                                <th>Tổng</th>
+                                <th>Người tạo</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for inv in recent_invoices %}
+                            <tr>
+                                <td><strong>{{ inv.invoice_number }}</strong></td>
+                                <td>{{ inv.date }}</td>
+                                <td>{{ inv.store_name or '-' }}</td>
+                                <td class="text-success fw-bold">{{ "{:,.0f}".format(inv.total) }}</td>
+                                <td>{{ inv.created_by }}</td>
+                                <td>
+                                    <a href="{{ url_for('view_invoice', invoice_id=inv.id) }}" class="btn btn-sm btn-outline-primary">
+                                        <i class="bi bi-eye"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted text-center mb-0">Chưa có hóa đơn nào.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-4">
+        <a href="{{ url_for('new_invoice') }}" class="btn btn-primary w-100 py-3">
+            <i class="bi bi-plus-circle"></i> Tạo hóa đơn mới
+        </a>
+    </div>
+    <div class="col-md-4">
+        <a href="{{ url_for('invoices') }}" class="btn btn-outline-primary w-100 py-3">
+            <i class="bi bi-file-earmark-text"></i> Danh sách hóa đơn
+        </a>
+    </div>
+    <div class="col-md-4">
+        <a href="{{ url_for('finance') }}" class="btn btn-outline-success w-100 py-3">
+            <i class="bi bi-cash-stack"></i> Quản lý tài chính
+        </a>
+    </div>
+</div>
+{% endblock %}
