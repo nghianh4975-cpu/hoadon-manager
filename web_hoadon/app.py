@@ -348,6 +348,7 @@ def import_text():
         text = request.form.get('text_data', '')
         invoice_date = request.form.get('invoice_date', datetime.date.today().strftime('%Y-%m-%d'))
         store_name = request.form.get('store_name', '')
+        num_cols = int(request.form.get('num_cols', 4) or 4)
 
         items = []
         grand_total = 0
@@ -358,35 +359,55 @@ def import_text():
             if not line:
                 continue
 
-            # Split by tab or |
+            # Skip total line
+            lower_line = line.lower()
+            if 'tong' in lower_line or 'thanh tien' in lower_line or 'total' in lower_line:
+                continue
+
+            # Split by |
             parts = None
             if '\t' in line:
-                parts = line.split('\t')
+                parts = [p.strip() for p in line.split('\t') if p.strip()]
             elif '|' in line:
-                parts = line.split('|')
+                parts = [p.strip() for p in line.split('|') if p.strip()]
             else:
-                # Try to find number at end
-                for i in range(len(line)-1, -1, -1):
-                    if line[i].isdigit() or line[i] in '.,':
-                        pass
-                    else:
-                        if i < len(line) - 1:
-                            name = line[:i+1].strip()
-                            try:
-                                price = float(line[i+1:].strip().replace(',','').replace('.',''))
-                                parts = [name, str(price)]
-                            except:
-                                pass
-                        break
+                # Try to find last number in line
+                tokens = line.split()
+                try:
+                    price = float(tokens[-1].replace(',', '').replace('.', ''))
+                    name = ' '.join(tokens[:-1]).strip()
+                    parts = [name, '1', str(price), str(price)]
+                except:
+                    pass
 
             if parts and len(parts) >= 2:
                 name = parts[0].strip()
-                try:
-                    price = float(parts[1].strip().replace(',','').replace('.',''))
-                    items.append({'name': name, 'quantity': 1, 'price': price, 'total': price})
-                    grand_total += price
-                except:
-                    pass
+                if not name:
+                    continue
+
+                if num_cols == 2:
+                    # Ten | Gia (so luong = 1)
+                    qty = 1
+                    price = float(parts[1].replace(',', ''))
+                else:
+                    # Ten | SoLuong | DonGia [ | ThanhTien]
+                    try:
+                        qty = float(parts[1].replace(',', ''))
+                    except:
+                        qty = 1
+                    try:
+                        price = float(parts[2].replace(',', ''))
+                    except:
+                        price = 0
+
+                total = qty * price
+                items.append({
+                    'name': name,
+                    'quantity': qty,
+                    'price': price,
+                    'total': total
+                })
+                grand_total += total
 
         conn = get_db()
         c = conn.cursor()
@@ -399,7 +420,7 @@ def import_text():
             VALUES (?,?,?,?,?,?,?,?)''',
             (invoice_number, invoice_date, store_name,
              json.dumps(items), grand_total, grand_total,
-             'Tu dong tao tu nhap text', session['username']))
+             f'Tu dong tao tu nhap text - {len(items)} san pham', session['username']))
         invoice_id = c.lastrowid
         conn.commit()
         conn.close()
