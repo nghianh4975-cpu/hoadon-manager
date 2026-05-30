@@ -1,43 +1,40 @@
 {% extends "base.html" %}
 
-{% block title %}Trang chủ - Hóa Đơn Manager{% endblock %}
+{% block title %}Trang chu - Hoa Don Manager{% endblock %}
 
 {% block content %}
 <div class="page-header">
-    <h2><i class="bi bi-house"></i> Trang chủ</h2>
-    <p class="mb-0">Chào mừng {{ session.username }}! ({{ session.role|capitalize }})</p>
+    <h2><i class="bi bi-house"></i> Trang chu</h2>
+    <p class="mb-0">Chao mui {{ session.username }}! ({{ session.role|capitalize }})</p>
 </div>
 
 <div class="row">
     <div class="col-md-3">
         <div class="card stat-card">
-            <div class="stat-label">Hóa đơn hôm nay</div>
+            <div class="stat-label">Hoa don hom nay</div>
             <div class="stat-value">{{ today_count }}</div>
-            <small class="text-muted">{{ "{:,.0f}".format(today_total) }} VNĐ</small>
+            <small class="text-muted">{{ "{:,.0f}".format(today_total) }} VND</small>
         </div>
     </div>
-    
     <div class="col-md-3">
         <div class="card stat-card success">
-            <div class="stat-label">Hóa đơn tháng này</div>
+            <div class="stat-label">Hoa don thang nay</div>
             <div class="stat-value">{{ month_count }}</div>
-            <small class="text-muted">{{ "{:,.0f}".format(month_total) }} VNĐ</small>
+            <small class="text-muted">{{ "{:,.0f}".format(month_total) }} VND</small>
         </div>
     </div>
-    
     <div class="col-md-3">
         <div class="card stat-card">
-            <div class="stat-label">Doanh thu tháng</div>
+            <div class="stat-label">Doanh thu thang</div>
             <div class="stat-value text-success">{{ "{:,.0f}".format(month_rev) }}</div>
-            <small class="text-muted">VNĐ</small>
+            <small class="text-muted">VND</small>
         </div>
     </div>
-    
     <div class="col-md-3">
         <div class="card stat-card {{ 'success' if profit >= 0 else 'danger' }}">
-            <div class="stat-label">Lợi nhuận tháng</div>
+            <div class="stat-label">Loi nhuan thang</div>
             <div class="stat-value">{{ "{:,.0f}".format(profit) }}</div>
-            <small class="text-muted">VNĐ</small>
+            <small class="text-muted">VND</small>
         </div>
     </div>
 </div>
@@ -46,7 +43,7 @@
     <div class="col-md-12">
         <div class="card">
             <div class="card-header bg-white">
-                <h5 class="mb-0"><i class="bi bi-clock-history"></i> Hóa đơn gần đây</h5>
+                <h5 class="mb-0"><i class="bi bi-clock-history"></i> Hoa don gan day</h5>
             </div>
             <div class="card-body">
                 {% if recent_invoices %}
@@ -54,11 +51,11 @@
                     <table class="table table-hover">
                         <thead>
                             <tr>
-                                <th>Số HD</th>
-                                <th>Ngày</th>
-                                <th>Cửa hàng</th>
-                                <th>Tổng</th>
-                                <th>Người tạo</th>
+                                <th>So HD</th>
+                                <th>Ngay</th>
+                                <th>Cua hang</th>
+                                <th>Tong</th>
+                                <th>Nguoi tao</th>
                                 <th></th>
                             </tr>
                         </thead>
@@ -81,7 +78,7 @@
                     </table>
                 </div>
                 {% else %}
-                <p class="text-muted text-center mb-0">Chưa có hóa đơn nào.</p>
+                <p class="text-muted text-center mb-0">Chua co hoa don nao.</p>
                 {% endif %}
             </div>
         </div>
@@ -91,17 +88,17 @@
 <div class="row mt-4">
     <div class="col-md-4">
         <a href="{{ url_for('new_invoice') }}" class="btn btn-primary w-100 py-3">
-            <i class="bi bi-plus-circle"></i> Tạo hóa đơn mới
+            <i class="bi bi-plus-circle"></i> Tao hoa don moi
         </a>
     </div>
     <div class="col-md-4">
-        <a href="{{ url_for('invoices') }}" class="btn btn-outline-primary w-100 py-3">
-            <i class="bi bi-file-earmark-text"></i> Danh sách hóa đơn
+        <a href="{{ url_for('import_text') }}" class="btn btn-outline-primary w-100 py-3">
+            <i class="bi bi-input-cursor-text"></i> Nhap text xuat Excel
         </a>
     </div>
     <div class="col-md-4">
         <a href="{{ url_for('finance') }}" class="btn btn-outline-success w-100 py-3">
-            <i class="bi bi-cash-stack"></i> Quản lý tài chính
+            <i class="bi bi-cash-stack"></i> Quan ly tai chinh
         </a>
     </div>
 </div>
