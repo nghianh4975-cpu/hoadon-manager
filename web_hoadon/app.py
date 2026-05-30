@@ -257,6 +257,11 @@ def dashboard():
     conn.close()
 
     return render_template('dashboard.html',
+        today_count=today_count, today_total=today_total,
+        month_count=month_count, month_total=month_total,
+        month_rev=month_rev, month_exp=month_exp,
+        profit=month_rev - month_exp,
+        recent_invoices=recent)
 
 # ============================================================
 # ROUTES - INVOICES
