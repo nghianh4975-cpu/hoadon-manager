@@ -138,6 +138,22 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated
 
+# Context processor - tu dong truyen notif_count vao moi template
+@app.context_processor
+def inject_user():
+    if 'user_id' not in session:
+        return {'notif_count': 0}
+    conn = get_db()
+    c = conn.cursor()
+    c.execute('SELECT COUNT(*) FROM notifications WHERE user_id=? AND is_read=0', (session['user_id'],))
+    count = c.fetchone()[0]
+    conn.close()
+    return {'notif_count': count}
+
+@app.before_request
+def before():
+    pass
+
 # ============================================================
 # ROUTES - AUTH
 # ============================================================
@@ -241,11 +257,6 @@ def dashboard():
     conn.close()
 
     return render_template('dashboard.html',
-        today_count=today_count, today_total=today_total,
-        month_count=month_count, month_total=month_total,
-        month_rev=month_rev, month_exp=month_exp,
-        profit=month_rev - month_exp,
-        recent_invoices=recent, notif_count=notif_count)
 
 # ============================================================
 # ROUTES - INVOICES
