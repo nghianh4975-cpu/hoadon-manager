@@ -69,22 +69,25 @@ class HybridCursor:
     def __init__(self, cursor, use_pg):
         self._cursor = cursor
         self._use_pg = use_pg
+        self._col_names = None
     def execute(self, sql, params=None):
         if self._use_pg and params:
             sql = sql.replace('?', '%s')
         self._cursor.execute(sql, params)
+        if self._use_pg:
+            self._col_names = [desc[0] for desc in self._cursor.description] if self._cursor.description else []
         return self
     def fetchone(self):
         row = self._cursor.fetchone()
         if row is None:
             return None
-        if self._use_pg:
-            return HybridRow(row)
+        if self._use_pg and self._col_names:
+            return dict(zip(self._col_names, row))
         return row
     def fetchall(self):
         rows = self._cursor.fetchall()
-        if self._use_pg:
-            return [HybridRow(r) for r in rows]
+        if self._use_pg and self._col_names:
+            return [dict(zip(self._col_names, r)) for r in rows]
         return rows
     def commit(self):
         self._cursor.connection.commit()
@@ -98,39 +101,6 @@ class HybridCursor:
     def lastrowid(self):
         return getattr(self._cursor, 'lastrowid', None)
 
-class HybridRow:
-    def __init__(self, row):
-        self._row = row
-    def __getitem__(self, key):
-        if isinstance(key, int):
-            return self._row[key]
-        if isinstance(self._row, dict):
-            return self._row[key]
-        return getattr(self._row, key)
-    def __len__(self):
-        return len(self._row)
-    def __iter__(self):
-        return iter(self._row)
-    def keys(self):
-        if isinstance(self._row, dict):
-            return self._row.keys()
-        return range(len(self._row))
-
-class HybridConn:
-    def __init__(self, conn, use_pg):
-        self._conn = conn
-        self._use_pg = use_pg
-    def cursor(self):
-        return HybridCursor(self._conn.cursor(), self._use_pg)
-    def commit(self):
-        self._conn.commit()
-    def close(self):
-        self._conn.close()
-    def __enter__(self):
-        return self
-    def __exit__(self, *args):
-        self.close()
-
 def get_db():
     if USE_PG:
         import psycopg2
@@ -138,7 +108,23 @@ def get_db():
     else:
         conn = sqlite3.connect(DATABASE)
         conn.row_factory = sqlite3.Row
-    return HybridConn(conn, USE_PG)
+
+    class Wrapper:
+        def __init__(self, conn, use_pg):
+            self._conn = conn
+            self._use_pg = use_pg
+        def cursor(self):
+            return HybridCursor(self._conn.cursor(), self._use_pg)
+        def commit(self):
+            self._conn.commit()
+        def close(self):
+            self._conn.close()
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            self.close()
+
+    return Wrapper(conn, USE_PG)
 
 def init_db():
     conn = get_db()
