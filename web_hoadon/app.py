@@ -103,14 +103,18 @@ class HybridRow:
         self._row = row
     def __getitem__(self, key):
         if isinstance(key, int):
-            return list(self._row.values())[key]
-        return self._row[key]
+            return self._row[key]
+        if isinstance(self._row, dict):
+            return self._row[key]
+        return getattr(self._row, key)
     def __len__(self):
         return len(self._row)
     def __iter__(self):
         return iter(self._row)
     def keys(self):
-        return self._row.keys()
+        if isinstance(self._row, dict):
+            return self._row.keys()
+        return range(len(self._row))
 
 class HybridConn:
     def __init__(self, conn, use_pg):
