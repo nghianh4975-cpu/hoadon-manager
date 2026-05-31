@@ -392,10 +392,10 @@ def dashboard():
     t = c.fetchone()
     month_count, month_total = t[0], t[1]
 
-    c.execute('SELECT COALESCE(SUM(amount),0) FROM finances WHERE type="revenue" AND date >= ?', (month_start,))
+    c.execute('SELECT COALESCE(SUM(amount),0) FROM finances WHERE type='revenue' AND date >= ?', (month_start,))
     month_rev = c.fetchone()[0]
 
-    c.execute('SELECT COALESCE(SUM(amount),0) FROM finances WHERE type="expense" AND date >= ?', (month_start,))
+    c.execute('SELECT COALESCE(SUM(amount),0) FROM finances WHERE type='expense' AND date >= ?', (month_start,))
     month_exp = c.fetchone()[0]
 
     c.execute('SELECT COUNT(*) FROM notifications WHERE user_id=? AND is_read=0', (session['user_id'],))
@@ -636,7 +636,7 @@ def send_to_admin(invoice_id):
 
     conn = get_db()
     c = conn.cursor()
-    c.execute('SELECT id FROM users WHERE role = "admin"')
+    c.execute("SELECT id FROM users WHERE role = 'admin'")
     admin = c.fetchone()
     if admin:
         c.execute('''INSERT INTO notifications
