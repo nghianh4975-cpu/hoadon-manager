@@ -38,14 +38,15 @@ app.secret_key = os.environ.get('SECRET_KEY', str(uuid.uuid4()))
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Use persistent disk on Render, local otherwise
-if os.environ.get('RENDER'):
-    DATABASE = '/var/data/hoadon.db'
+# Use PostgreSQL on Render, SQLite when local
+USE_PG = bool(os.environ.get('DATABASE_URL'))
+
+if USE_PG:
+    DATABASE = None  # PostgreSQL doesn't need local file
 else:
     DATABASE = os.path.join(BASE_DIR, 'hoadon.db')
 
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
-os.makedirs(os.path.dirname(DATABASE), exist_ok=True)
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
