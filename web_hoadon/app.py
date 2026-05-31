@@ -37,8 +37,15 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', str(uuid.uuid4()))
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATABASE = os.path.join(BASE_DIR, 'hoadon.db')
+
+# Use persistent disk on Render, local otherwise
+if os.environ.get('RENDER'):
+    DATABASE = '/var/data/hoadon.db'
+else:
+    DATABASE = os.path.join(BASE_DIR, 'hoadon.db')
+
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
+os.makedirs(os.path.dirname(DATABASE), exist_ok=True)
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
@@ -53,67 +60,120 @@ def from_json(value):
         return []
 
 # ============================================================
-# DATABASE
+# DATABASE - PostgreSQL tren Render, SQLite khi local
 # ============================================================
+USE_PG = bool(os.environ.get('DATABASE_URL'))
+
 def get_db():
-    conn = sqlite3.connect(DATABASE)
-    conn.row_factory = sqlite3.Row
-    return conn
+    if USE_PG:
+        import psycopg2
+        conn = psycopg2.connect(os.environ['DATABASE_URL'])
+        return conn
+    else:
+        conn = sqlite3.connect(DATABASE)
+        conn.row_factory = sqlite3.Row
+        return conn
 
 def init_db():
     conn = get_db()
     c = conn.cursor()
 
-    c.execute('''CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL,
-        role TEXT NOT NULL DEFAULT 'ketoan',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )''')
-
-    c.execute('''CREATE TABLE IF NOT EXISTS invoices (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        invoice_number TEXT,
-        date TEXT,
-        store_name TEXT,
-        items TEXT,
-        subtotal REAL DEFAULT 0,
-        discount_percent REAL DEFAULT 0,
-        tax_percent REAL DEFAULT 0,
-        total REAL DEFAULT 0,
-        notes TEXT,
-        image_data TEXT,
-        created_by TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )''')
-
-    c.execute('''CREATE TABLE IF NOT EXISTS finances (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        type TEXT NOT NULL,
-        date TEXT NOT NULL,
-        amount REAL NOT NULL,
-        category TEXT,
-        reason TEXT,
-        description TEXT,
-        created_by TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )''')
-
-    c.execute('''CREATE TABLE IF NOT EXISTS notifications (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
-        message TEXT,
-        invoice_id INTEGER,
-        is_read INTEGER DEFAULT 0,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )''')
-
-    c.execute('SELECT COUNT(*) FROM users')
-    if c.fetchone()[0] == 0:
-        c.execute('INSERT INTO users (username, password, role) VALUES (?, ?, ?)',
-                  ('admin', generate_password_hash('admin123'), 'admin'))
+    if USE_PG:
+        # PostgreSQL schema
+        c.execute('''CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            username VARCHAR(255) UNIQUE NOT NULL,
+            password VARCHAR(255) NOT NULL,
+            role VARCHAR(50) NOT NULL DEFAULT 'ketoan',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS invoices (
+            id SERIAL PRIMARY KEY,
+            invoice_number VARCHAR(255),
+            date VARCHAR(20),
+            store_name VARCHAR(255),
+            items TEXT,
+            subtotal REAL DEFAULT 0,
+            discount_percent REAL DEFAULT 0,
+            tax_percent REAL DEFAULT 0,
+            total REAL DEFAULT 0,
+            notes TEXT,
+            image_data TEXT,
+            created_by VARCHAR(255),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS finances (
+            id SERIAL PRIMARY KEY,
+            type VARCHAR(20) NOT NULL,
+            date VARCHAR(20) NOT NULL,
+            amount REAL NOT NULL,
+            category VARCHAR(255),
+            reason TEXT,
+            description TEXT,
+            created_by VARCHAR(255),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS notifications (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER,
+            message TEXT,
+            invoice_id INTEGER,
+            is_read INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+        c.execute('SELECT COUNT(*) FROM users')
+        if c.fetchone()[0] == 0:
+            c.execute('INSERT INTO users (username, password, role) VALUES (%s, %s, %s)',
+                      ('admin', generate_password_hash('admin123'), 'admin'))
+    else:
+        # SQLite schema
+        c.execute('''CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'ketoan',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS invoices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            invoice_number TEXT,
+            date TEXT,
+            store_name TEXT,
+            items TEXT,
+            subtotal REAL DEFAULT 0,
+            discount_percent REAL DEFAULT 0,
+            tax_percent REAL DEFAULT 0,
+            total REAL DEFAULT 0,
+            notes TEXT,
+            image_data TEXT,
+            created_by TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS finances (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            type TEXT NOT NULL,
+            date TEXT NOT NULL,
+            amount REAL NOT NULL,
+            category TEXT,
+            reason TEXT,
+            description TEXT,
+            created_by TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            message TEXT,
+            invoice_id INTEGER,
+            is_read INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+        c.execute('SELECT COUNT(*) FROM users')
+        if c.fetchone()[0] == 0:
+            c.execute('INSERT INTO users (username, password, role) VALUES (?, ?, ?)',
+                      ('admin', generate_password_hash('admin123'), 'admin'))
 
     conn.commit()
     conn.close()
