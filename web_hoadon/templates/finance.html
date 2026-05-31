@@ -109,7 +109,7 @@
                 <div class="modal-body">
                     <input type="hidden" name="type" value="revenue">
                     <div class="mb-3"><label class="form-label">Ngay</label><input type="date" class="form-control" name="date" value="{{ month }}-01" required></div>
-                    <div class="mb-3"><label class="form-label">So tien</label><input type="number" class="form-control" name="amount" min="0" required></div>
+                    <div class="mb-3"><label class="form-label">So tien</label><input type="text" class="form-control" inputmode="decimal" name="amount" placeholder="VD: 500000" required oninput="this.value=this.value.replace(/[^0-9]/g,'')"></div>
                     <div class="mb-3">
                         <label class="form-label">Loai</label>
                         <select class="form-select" name="category">
@@ -142,7 +142,7 @@
                 <div class="modal-body">
                     <input type="hidden" name="type" value="expense">
                     <div class="mb-3"><label class="form-label">Ngay</label><input type="date" class="form-control" name="date" value="{{ month }}-01" required></div>
-                    <div class="mb-3"><label class="form-label">So tien</label><input type="number" class="form-control" name="amount" min="0" required></div>
+                    <div class="mb-3"><label class="form-label">So tien</label><input type="text" class="form-control" inputmode="decimal" name="amount" placeholder="VD: 500000" required oninput="this.value=this.value.replace(/[^0-9]/g,'')"></div>
                     <div class="mb-3">
                         <label class="form-label">Loai chi phi</label>
                         <select class="form-select" name="category">
