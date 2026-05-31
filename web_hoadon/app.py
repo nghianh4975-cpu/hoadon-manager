@@ -65,20 +65,80 @@ def from_json(value):
 # ============================================================
 USE_PG = bool(os.environ.get('DATABASE_URL'))
 
+class HybridCursor:
+    def __init__(self, cursor, use_pg):
+        self._cursor = cursor
+        self._use_pg = use_pg
+    def execute(self, sql, params=None):
+        if self._use_pg and params:
+            sql = sql.replace('?', '%s')
+        self._cursor.execute(sql, params)
+        return self
+    def fetchone(self):
+        row = self._cursor.fetchone()
+        if row is None:
+            return None
+        if self._use_pg:
+            return HybridRow(row)
+        return row
+    def fetchall(self):
+        rows = self._cursor.fetchall()
+        if self._use_pg:
+            return [HybridRow(r) for r in rows]
+        return rows
+    def commit(self):
+        self._cursor.connection.commit()
+    def close(self):
+        self._cursor.close()
+    def __enter__(self):
+        return self
+    def __exit__(self, *args):
+        self.close()
+    @property
+    def lastrowid(self):
+        return getattr(self._cursor, 'lastrowid', None)
+
+class HybridRow:
+    def __init__(self, row):
+        self._row = row
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return list(self._row.values())[key]
+        return self._row[key]
+    def __len__(self):
+        return len(self._row)
+    def __iter__(self):
+        return iter(self._row)
+    def keys(self):
+        return self._row.keys()
+
+class HybridConn:
+    def __init__(self, conn, use_pg):
+        self._conn = conn
+        self._use_pg = use_pg
+    def cursor(self):
+        return HybridCursor(self._conn.cursor(), self._use_pg)
+    def commit(self):
+        self._conn.commit()
+    def close(self):
+        self._conn.close()
+    def __enter__(self):
+        return self
+    def __exit__(self, *args):
+        self.close()
+
 def get_db():
     if USE_PG:
         import psycopg2
         conn = psycopg2.connect(os.environ['DATABASE_URL'])
-        return conn
     else:
         conn = sqlite3.connect(DATABASE)
         conn.row_factory = sqlite3.Row
-        return conn
+    return HybridConn(conn, USE_PG)
 
 def init_db():
     conn = get_db()
     c = conn.cursor()
-
     if USE_PG:
         # PostgreSQL schema
         c.execute('''CREATE TABLE IF NOT EXISTS users (
