@@ -1,8 +1,17 @@
-flask==3.0.0
-werkzeug==3.0.1
-openpyxl==3.1.2
-gunicorn==21.2.0
-opencv-python==4.8.1.78
-pytesseract==0.3.10
-Pillow==10.1.0
-psycopg2-binary==2.9.9
+# OCR Hóa đơn - Requirements
+
+# OCR Engine - Ưu tiên dùng EasyOCR vì hỗ trợ tiếng Việt tốt
+easyocr>=1.7.0
+
+# Xử lý ảnh
+Pillow>=9.0.0
+opencv-python>=4.8.0
+
+# Giao diện Desktop
+tkinter-tooltip>=2.1.0
+
+# Xuất Excel
+openpyxl>=3.1.0
+
+# Tiện ích
+numpy>=1.24.0
