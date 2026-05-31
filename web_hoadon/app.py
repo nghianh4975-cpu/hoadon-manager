@@ -82,12 +82,50 @@ class HybridCursor:
         if row is None:
             return None
         if self._use_pg and self._col_names:
-            return dict(zip(self._col_names, row))
+            d = dict(zip(self._col_names, row))
+            class Row:
+                def __init__(self, d):
+                    self._d = d
+                def __getitem__(self, k):
+                    if isinstance(k, int):
+                        return list(self._d.values())[k]
+                    return self._d[k]
+                def get(self, k, default=None):
+                    return self._d.get(k, default)
+                def keys(self):
+                    return self._d.keys()
+                def values(self):
+                    return self._d.values()
+                def items(self):
+                    return self._d.items()
+                def __len__(self):
+                    return len(self._d)
+                def __iter__(self):
+                    return iter(self._d)
+            return Row(d)
         return row
     def fetchall(self):
         rows = self._cursor.fetchall()
         if self._use_pg and self._col_names:
-            return [dict(zip(self._col_names, r)) for r in rows]
+            def make_row(r):
+                d = dict(zip(self._col_names, r))
+                class Row:
+                    def __init__(self, d):
+                        self._d = d
+                    def __getitem__(self, k):
+                        if isinstance(k, int):
+                            return list(self._d.values())[k]
+                        return self._d[k]
+                    def get(self, k, default=None):
+                        return self._d.get(k, default)
+                    def keys(self):
+                        return self._d.keys()
+                    def __len__(self):
+                        return len(self._d)
+                    def __iter__(self):
+                        return iter(self._d)
+                return Row(d)
+            return [make_row(r) for r in rows]
         return rows
     def commit(self):
         self._cursor.connection.commit()
