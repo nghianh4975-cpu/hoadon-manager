@@ -736,6 +736,8 @@ def view_invoice(invoice_id):
     c.execute('SELECT * FROM invoices WHERE id = ?', (invoice_id,))
     invoice = c.fetchone()
     app.logger.info(f'Invoice found: {invoice is not None}')
+    if invoice:
+        app.logger.info(f'Invoice items type: {type(invoice["items"])}, value: {str(invoice["items"])[:200] if invoice["items"] else "None"}')
     conn.close()
 
     if not invoice:
