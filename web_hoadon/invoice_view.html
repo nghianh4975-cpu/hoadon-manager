@@ -49,20 +49,11 @@
         <div class="card">
             <div class="card-header bg-white"><h5 class="mb-0">Chi Tiet Hang Hoa</h5></div>
             <div class="card-body p-0">
-                <!-- DEBUG: invoice.items = {{ invoice.items[:100] if invoice.items else 'None' }} -->
-                {% set items = [] %}
-                {% if invoice.items and invoice.items is string %}
-                    {% try %}
-                        {% set items = invoice.items|from_json %}
-                    {% except %}
-                        {% set items = [] %}
-                    {% endtry %}
-                {% endif %}
-                {% if items and items|length > 0 %}
+                {% if items_list and items_list|length > 0 %}
                 <table class="table">
                     <thead class="table-light"><tr><th>STT</th><th>Ten Hang</th><th class="text-center">So Luong</th><th class="text-end">Don Gia</th><th class="text-end">Thanh Tien</th></tr></thead>
                     <tbody>
-                        {% for item in items %}
+                        {% for item in items_list %}
                         <tr>
                             <td>{{ loop.index }}</td>
                             <td>{{ item.name }}</td>
