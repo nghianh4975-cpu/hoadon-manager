@@ -49,7 +49,10 @@
         <div class="card">
             <div class="card-header bg-white"><h5 class="mb-0">Chi Tiet Hang Hoa</h5></div>
             <div class="card-body p-0">
-                {% set items = invoice.items|from_json if invoice.items else [] %}
+                {% set items = [] %}
+                {% if invoice.items %}
+                    {% set items = invoice.items|from_json %}
+                {% endif %}
                 {% if items %}
                 <table class="table">
                     <thead class="table-light"><tr><th>STT</th><th>Ten Hang</th><th class="text-center">So Luong</th><th class="text-end">Don Gia</th><th class="text-end">Thanh Tien</th></tr></thead>
