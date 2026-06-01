@@ -461,18 +461,40 @@ def new_invoice():
 
         conn = get_db()
         c = conn.cursor()
-        c.execute('''INSERT INTO invoices
-            (invoice_number, date, store_name, items, subtotal, discount_percent,
-             tax_percent, total, notes, image_data, created_by)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?)''',
-            (request.form.get('invoice_number'),
-             request.form.get('invoice_date'),
-             request.form.get('store_name'),
-             items_json, subtotal, discount, tax, total,
-             request.form.get('notes', ''),
-             image_data,
-             session['username']))
-        invoice_id = c.lastrowid
+
+        # Get invoice number
+        c.execute('SELECT COUNT(*) FROM invoices')
+        count = c.fetchone()[0]
+        invoice_number = request.form.get('invoice_number') or f"HD{datetime.date.today().strftime('%Y%m%d')}{count+1:04d}"
+
+        # Insert and get ID
+        if USE_PG:
+            c.execute('''INSERT INTO invoices
+                (invoice_number, date, store_name, items, subtotal, discount_percent,
+                 tax_percent, total, notes, image_data, created_by)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id''',
+                (invoice_number,
+                 request.form.get('invoice_date'),
+                 request.form.get('store_name'),
+                 items_json, subtotal, discount, tax, total,
+                 request.form.get('notes', ''),
+                 image_data,
+                 session['username']))
+            invoice_id = c.fetchone()[0]
+        else:
+            c.execute('''INSERT INTO invoices
+                (invoice_number, date, store_name, items, subtotal, discount_percent,
+                 tax_percent, total, notes, image_data, created_by)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?)''',
+                (invoice_number,
+                 request.form.get('invoice_date'),
+                 request.form.get('store_name'),
+                 items_json, subtotal, discount, tax, total,
+                 request.form.get('notes', ''),
+                 image_data,
+                 session['username']))
+            invoice_id = c.lastrowid
+
         conn.commit()
         conn.close()
 
@@ -561,17 +583,30 @@ def import_text():
 
         conn = get_db()
         c = conn.cursor()
+
+        # Generate invoice number
         c.execute('SELECT COUNT(*) FROM invoices')
         count = c.fetchone()[0]
         invoice_number = f"HD{datetime.date.today().strftime('%Y%m%d')}{count+1:04d}"
 
-        c.execute('''INSERT INTO invoices
-            (invoice_number, date, store_name, items, subtotal, total, notes, created_by)
-            VALUES (?,?,?,?,?,?,?,?)''',
-            (invoice_number, invoice_date, store_name,
-             json.dumps(items), grand_total, grand_total,
-             f'Tu dong tao tu nhap text - {len(items)} san pham', session['username']))
-        invoice_id = c.lastrowid
+        # Insert and get ID
+        if USE_PG:
+            c.execute('''INSERT INTO invoices
+                (invoice_number, date, store_name, items, subtotal, total, notes, created_by)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id''',
+                (invoice_number, invoice_date, store_name,
+                 json.dumps(items), grand_total, grand_total,
+                 f'Tu dong tao tu nhap text - {len(items)} san pham', session['username']))
+            invoice_id = c.fetchone()[0]
+        else:
+            c.execute('''INSERT INTO invoices
+                (invoice_number, date, store_name, items, subtotal, total, notes, created_by)
+                VALUES (?,?,?,?,?,?,?,?)''',
+                (invoice_number, invoice_date, store_name,
+                 json.dumps(items), grand_total, grand_total,
+                 f'Tu dong tao tu nhap text - {len(items)} san pham', session['username']))
+            invoice_id = c.lastrowid
+
         conn.commit()
         conn.close()
 
