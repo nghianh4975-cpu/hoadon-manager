@@ -598,19 +598,39 @@ def scan_image():
         img_bytes = file.read()
         image_data = base64.b64encode(img_bytes).decode('utf-8')
 
-        # Try OCR
+        # OCR
         extracted_text = ''
         if HAS_OCR:
             try:
                 nparr = BytesIO(img_bytes)
                 img_array = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
                 if img_array is not None:
+                    # Chuyen sang xam
                     gray = cv2.cvtColor(img_array, cv2.COLOR_BGR2GRAY)
-                    extracted_text = pytesseract.image_to_string(gray, lang='vie+eng')
+
+                    # Tang kich thuoc anh de OCR tot hon
+                    height, width = gray.shape
+                    scale = max(2, int(min(800 / width, 800 / height)))
+                    gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+
+                    # Lam nhin hon bang Gaussian blur
+                    gray = cv2.GaussianBlur(gray, (5, 5), 0)
+
+                    # Adaptive threshold de tach text khoi nen
+                    binary = cv2.adaptiveThreshold(
+                        gray, 255,
+                        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                        cv2.THRESH_BINARY,
+                        11, 2
+                    )
+
+                    # OCR voi cau hinh tot hon
+                    custom_config = r'--oem 3 --psm 6'
+                    extracted_text = pytesseract.image_to_string(binary, lang='vie+eng', config=custom_config)
             except Exception as e:
                 extracted_text = f'[OCR loi: {str(e)}]'
         else:
-            extracted_text = '[OCR khong ho tro - vui long cai dat pytesseract va opencv]'
+            extracted_text = '[OCR khong ho tro tren server nay]'
 
         conn = get_db()
         c = conn.cursor()
@@ -668,10 +688,19 @@ def notifications():
 @app.route('/invoice/<int:invoice_id>')
 @login_required
 def view_invoice(invoice_id):
+    app.logger.info(f'view_invoice called: invoice_id={invoice_id}, type={type(invoice_id)}')
     conn = get_db()
     c = conn.cursor()
+    try:
+        c.execute('SELECT id, invoice_number FROM invoices WHERE id = ?', (invoice_id,))
+        test = c.fetchone()
+        app.logger.info(f'SQL test result: {test}')
+    except Exception as e:
+        app.logger.error(f'SQL error: {e}')
+
     c.execute('SELECT * FROM invoices WHERE id = ?', (invoice_id,))
     invoice = c.fetchone()
+    app.logger.info(f'Invoice found: {invoice is not None}')
     conn.close()
 
     if not invoice:
@@ -1564,6 +1593,55 @@ def users_delete(user_id):
     conn.close()
     flash('Xoa thanh cong!', 'success')
     return redirect(url_for('users'))
+
+# ============================================================
+# BACKUP ALL DATA
+# ============================================================
+@app.route('/backup')
+@login_required
+def backup_data():
+    import json
+    from datetime import datetime as dt
+
+    conn = get_db()
+    c = conn.cursor()
+
+    # Backup invoices
+    c.execute('SELECT * FROM invoices ORDER BY date DESC')
+    cols_inv = [d[0] for d in c._cursor.description]
+    invoices = c.fetchall()
+    invoices_list = [dict(zip(cols_inv, r)) for r in invoices]
+
+    # Backup finances
+    c.execute('SELECT * FROM finances ORDER BY date DESC')
+    cols_fin = [d[0] for d in c._cursor.description]
+    finances = c.fetchall()
+    finances_list = [dict(zip(cols_fin, r)) for r in finances]
+
+    # Backup users (khong lay password)
+    c.execute('SELECT id, username, role, created_at FROM users')
+    cols_user = [d[0] for d in c._cursor.description]
+    users = c.fetchall()
+    users_list = [dict(zip(cols_user, r)) for r in users]
+
+    conn.close()
+
+    # Tao JSON backup
+    backup = {
+        'backup_date': dt.now().isoformat(),
+        'version': '1.0',
+        'invoices': invoices_list,
+        'finances': finances_list,
+        'users': users_list
+    }
+
+    response = app.response_class(
+        response=json.dumps(backup, indent=2, ensure_ascii=False),
+        mimetype='application/json'
+    )
+    filename = f'backup_hoadon_{dt.now().strftime("%Y%m%d_%H%M%S")}.json'
+    response.headers['Content-Disposition'] = f'attachment; filename={filename}'
+    return response
 
 # ============================================================
 # ERROR HANDLERS
