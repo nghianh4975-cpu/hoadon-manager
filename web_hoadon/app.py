@@ -723,28 +723,25 @@ def notifications():
 @app.route('/invoice/<int:invoice_id>')
 @login_required
 def view_invoice(invoice_id):
-    app.logger.info(f'view_invoice called: invoice_id={invoice_id}, type={type(invoice_id)}')
     conn = get_db()
     c = conn.cursor()
-    try:
-        c.execute('SELECT id, invoice_number FROM invoices WHERE id = ?', (invoice_id,))
-        test = c.fetchone()
-        app.logger.info(f'SQL test result: {test}')
-    except Exception as e:
-        app.logger.error(f'SQL error: {e}')
-
     c.execute('SELECT * FROM invoices WHERE id = ?', (invoice_id,))
     invoice = c.fetchone()
-    app.logger.info(f'Invoice found: {invoice is not None}')
-    if invoice:
-        app.logger.info(f'Invoice items type: {type(invoice["items"])}, value: {str(invoice["items"])[:200] if invoice["items"] else "None"}')
     conn.close()
 
     if not invoice:
         flash('Khong tim thay hoa don!', 'danger')
         return redirect(url_for('invoices'))
 
-    return render_template('invoice_view.html', invoice=invoice)
+    # Parse items nhu list
+    items_list = []
+    if invoice.get('items'):
+        try:
+            items_list = json.loads(invoice['items'])
+        except:
+            items_list = []
+
+    return render_template('invoice_view.html', invoice=invoice, items_list=items_list)
 
 # Xuat Excel 1 hoa don chi tiet
 @app.route('/invoice/<int:invoice_id>/export')
