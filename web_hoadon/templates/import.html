@@ -155,9 +155,15 @@
 <div class="card import-detail-card">
     <div class="card-header bg-white d-flex justify-content-between align-items-center">
         <h5 class="mb-0"><i class="bi bi-list-ol text-primary"></i> Chi Tiet Nhap Hang</h5>
-        <button type="button" class="btn btn-sm btn-outline-primary" onclick="toggleAllChecks()">
-            <i class="bi bi-check2-square"></i> Chon Tat Ca
-        </button>
+        <div class="d-flex gap-2 align-items-center">
+            <button type="button" class="btn btn-sm btn-outline-primary" onclick="toggleAllChecks()">
+                <i class="bi bi-check2-square"></i> Chon Tat Ca
+            </button>
+            <button type="button" class="btn btn-sm btn-danger" id="deleteSelectedBtn" style="display:none"
+                onclick="doBatchDelete()">
+                <i class="bi bi-trash"></i> Xoa Da Chon (<span id="selectedCount">0</span>)
+            </button>
+        </div>
     </div>
     <div class="card-body p-0">
         {# Form them phieu nhap #}
@@ -196,8 +202,10 @@
         </form>
 
         {% if imports_list %}
-        <form method="POST" action="{{ url_for('import_delete_batch') }}" id="batchDeleteForm">
-        <input type="hidden" name="month" value="{{ month }}">
+        <form method="POST" action="{{ url_for('import_delete_batch') }}" id="batchDeleteForm" style="display:none">
+            <input type="hidden" name="month" value="{{ month }}">
+            <input type="hidden" name="delete_ids_batch" id="deleteIdsBatch">
+        </form>
         <div class="table-responsive">
             <table class="table table-sm table-hover mb-0">
                 <thead>
@@ -210,15 +218,15 @@
                         <th class="text-end">So Luong</th>
                         <th class="text-end">Don Gia</th>
                         <th class="text-end">Thanh Tien</th>
-                        <th class="text-end">Da Thanh Toan</th>
+                        <th class="text-end">Da TT</th>
                         <th class="text-end">Con Lai</th>
                         <th></th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for imp in imports_list %}
-                    <tr>
-                        <td><input type="checkbox" class="row-check" name="delete_ids" value="{{ imp.id }}" onchange="updateSelectedCount()"></td>
+                    <tr data-id="{{ imp.id }}">
+                        <td><input type="checkbox" class="row-check" value="{{ imp.id }}" onchange="updateSelectedCount()"></td>
                         <td>{{ imp.date }}</td>
                         <td>
                             {% if imp.supplier_id %}
@@ -256,16 +264,12 @@
                         </td>
                         <td>
                             <div class="d-flex gap-1">
-                                <form method="POST" action="{{ url_for('import_update_payment', import_id=imp.id) }}" class="d-flex gap-1 align-items-center" onsubmit="return confirm('Cap nhat thanh toan?')">
-                                    <input type="hidden" name="month" value="{{ month }}">
-                                    <input type="number" step="1000" class="form-control form-control-sm" name="paid_amount"
-                                        value="{{ "{:,.0f}".format(imp_paid) }}" placeholder="TT" style="width:100px"
-                                        title="Nhap so tien da thanh toan">
-                                    <button type="submit" class="btn btn-sm btn-outline-success" title="Luu thanh toan">
-                                        <i class="bi bi-check"></i>
-                                    </button>
-                                </form>
-                                <form method="POST" action="{{ url_for('import_delete', import_id=imp.id) }}" onsubmit="return confirm('Xoa phieu nhap nay?')">
+                                <button type="button" class="btn btn-sm btn-outline-warning"
+                                    onclick="openEditModal({{ imp.id }}, '{{ imp.date }}', '{{ imp.supplier_id or '' }}', '{{ imp.material_id or '' }}', {{ imp.quantity }}, {{ imp.unit_price }}, '{{ imp.notes or '' }}', {{ imp_paid }})"
+                                    title="Sua phieu">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <form method="POST" action="{{ url_for('import_delete', import_id=imp.id) }}" onsubmit="return confirm('Xoa phieu nay?')">
                                     <input type="hidden" name="month" value="{{ month }}">
                                     <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
                                 </form>
@@ -297,10 +301,75 @@
                 </tfoot>
             </table>
         </div>
-        </form>
         {% else %}
         <p class="text-muted text-center p-4 mb-0">Chua co phieu nhap nao trong thang nay.</p>
         {% endif %}
+    </div>
+</div>
+
+{# ---- MODAL SUA PHIEU NHAP ---- #}
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title"><i class="bi bi-pencil"></i> Sua Phieu Nhap</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('import_update_single') }}">
+                <input type="hidden" name="import_id" id="editImportId">
+                <input type="hidden" name="month" value="{{ month }}">
+                <div class="modal-body">
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-6">
+                            <label class="form-label small">Ngay</label>
+                            <input type="date" name="date" id="editDate" class="form-control" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small">Nha Cung Cap</label>
+                            <select name="supplier_id" id="editSupplier" class="form-select">
+                                <option value="">-- Chon NCC --</option>
+                                {% for sup in suppliers %}
+                                <option value="{{ sup.id }}">{{ sup.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-6">
+                            <label class="form-label small">Nguyen Lieu</label>
+                            <select name="material_id" id="editMaterial" class="form-select" required>
+                                <option value="">-- Chon Nguyen Lieu --</option>
+                                {% for mat in materials %}
+                                <option value="{{ mat.id }}">{{ mat.name }} ({{ mat.unit or 'dv' }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small">Ghi Chu</label>
+                            <input type="text" name="notes" id="editNotes" class="form-control">
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-4">
+                            <label class="form-label small">So Luong</label>
+                            <input type="number" step="0.01" name="quantity" id="editQuantity" class="form-control" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small">Don Gia</label>
+                            <input type="number" step="0.01" name="unit_price" id="editPrice" class="form-control" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small">Da Thanh Toan</label>
+                            <input type="number" step="1000" name="paid_amount" id="editPaid" class="form-control" placeholder="0">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Huy</button>
+                    <button type="submit" class="btn btn-warning"><i class="bi bi-check-circle"></i> Luu</button>
+                </div>
+            </form>
+        </div>
     </div>
 </div>
 {% endblock %}
@@ -323,7 +392,33 @@
         document.getElementById('deleteSelectedBtn').style.display = count > 0 ? '' : 'none';
     }
 
-    // Khoi tao checkbox all khi trang load
+    function doBatchDelete() {
+        var ids = [];
+        document.querySelectorAll('.row-check:checked').forEach(function(cb) {
+            ids.push(cb.value);
+        });
+        if (ids.length === 0) {
+            alert('Chua chon phieu nao!');
+            return;
+        }
+        if (!confirm('Xoa ' + ids.length + ' phieu da chon?')) return;
+        document.getElementById('deleteIdsBatch').value = ids.join(',');
+        document.getElementById('batchDeleteForm').submit();
+    }
+
+    function openEditModal(id, date, supplierId, materialId, qty, price, notes, paid) {
+        document.getElementById('editImportId').value = id;
+        document.getElementById('editDate').value = date;
+        document.getElementById('editSupplier').value = supplierId;
+        document.getElementById('editMaterial').value = materialId;
+        document.getElementById('editQuantity').value = qty;
+        document.getElementById('editPrice').value = price;
+        document.getElementById('editNotes').value = notes;
+        document.getElementById('editPaid').value = paid;
+        var modal = new bootstrap.Modal(document.getElementById('editModal'));
+        modal.show();
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
         updateSelectedCount();
     });

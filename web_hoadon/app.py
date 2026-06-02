@@ -2170,8 +2170,18 @@ def import_delete(import_id):
 @app.route('/import/delete-batch', methods=['POST'])
 @login_required
 def import_delete_batch():
-    ids = request.form.getlist('delete_ids')
+    ids_str = request.form.get('delete_ids_batch', '')
     month = request.form.get('month', datetime.date.today().strftime('%Y-%m'))
+
+    if not ids_str:
+        flash('Chua chon phieu nao de xoa!', 'warning')
+        return redirect(url_for('import_page', month=month))
+
+    try:
+        ids = [int(x.strip()) for x in ids_str.split(',') if x.strip()]
+    except ValueError:
+        flash('Du lieu khong hop le!', 'danger')
+        return redirect(url_for('import_page', month=month))
 
     if not ids:
         flash('Chua chon phieu nao de xoa!', 'warning')
@@ -2218,6 +2228,93 @@ def import_update_payment(import_id):
     conn.commit()
     conn.close()
     flash('Cap nhat thanh toan thanh cong!', 'success')
+    return redirect(url_for('import_page', month=month))
+
+
+# Sua phieu nhap (cap nhat nhieu truong)
+@app.route('/import/update-single', methods=['POST'])
+@login_required
+def import_update_single():
+    import_id = int(request.form.get('import_id', 0))
+    new_date = request.form.get('date', '').strip()
+    new_supplier_id = request.form.get('supplier_id', '') or None
+    new_material_id = request.form.get('material_id', '') or None
+    new_quantity = float(request.form.get('quantity', 0) or 0)
+    new_unit_price = float(request.form.get('unit_price', 0) or 0)
+    new_notes = request.form.get('notes', '').strip()
+    new_paid = float(request.form.get('paid_amount', 0) or 0)
+    month = request.form.get('month', datetime.date.today().strftime('%Y-%m'))
+
+    if not new_date or not new_material_id:
+        flash('Ngay va Nguyen lieu la bat buoc!', 'danger')
+        return redirect(url_for('import_page', month=month))
+
+    conn = get_db()
+    c = conn.cursor()
+
+    # Lay thong tin cu
+    c.execute('SELECT date, material_id, quantity FROM imports WHERE id = ?', (import_id,))
+    old = c.fetchone()
+    if not old:
+        conn.close()
+        flash('Khong tim thay phieu nhap!', 'danger')
+        return redirect(url_for('import_page', month=month))
+
+    old_month = old['date'][:7]
+    old_material_id = old['material_id']
+    old_qty = float(old['quantity'] or 0)
+
+    # Cap nhat ton kho thang cu (tru qty cu)
+    if old_material_id:
+        c.execute('''SELECT id, opening_stock, import_qty, closing_stock FROM inventory
+            WHERE month = ? AND material_id = ?''',
+            (old_month, old_material_id))
+        inv = c.fetchone()
+        if inv:
+            new_import_qty = max(0, float(inv['import_qty'] or 0) - old_qty)
+            new_closing = float(inv['opening_stock'] or 0) + new_import_qty
+            c.execute('''UPDATE inventory SET import_qty=?, closing_stock=?,
+                updated_at=CURRENT_TIMESTAMP WHERE id=?''',
+                (new_import_qty, new_closing, inv['id']))
+
+    new_total = new_quantity * new_unit_price
+    new_month = new_date[:7]
+
+    # Cap nhat ton kho thang moi (cong qty moi)
+    if new_material_id:
+        c.execute('''SELECT id, opening_stock, import_qty, closing_stock FROM inventory
+            WHERE month = ? AND material_id = ?''',
+            (new_month, new_material_id))
+        inv2 = c.fetchone()
+        if inv2:
+            new_imp = float(inv2['import_qty'] or 0) + new_quantity
+            new_close = float(inv2['opening_stock'] or 0) + new_imp
+            c.execute('''UPDATE inventory SET import_qty=?, closing_stock=?,
+                updated_at=CURRENT_TIMESTAMP WHERE id=?''',
+                (new_imp, new_close, inv2['id']))
+        else:
+            # Tao ban ghi ton kho moi
+            prev_month = (datetime.date(int(new_month[:4]), int(new_month[5:7]), 1)
+                          - datetime.timedelta(days=1)).strftime('%Y-%m')
+            c.execute('SELECT closing_stock FROM inventory WHERE month = ? AND material_id = ?',
+                      (prev_month, new_material_id))
+            prev = c.fetchone()
+            opening = float(prev[0]) if prev and prev[0] else 0
+            closing = opening + new_quantity
+            c.execute('''INSERT INTO inventory (month, material_id, opening_stock, import_qty, closing_stock)
+                VALUES (?,?,?,?,?)''',
+                (new_month, new_material_id, opening, new_quantity, closing))
+
+    # Cap nhat phieu nhap
+    c.execute('''UPDATE imports SET date=?, material_id=?, supplier_id=?,
+        quantity=?, unit_price=?, total_price=?, notes=?, paid_amount=?
+        WHERE id=?''',
+        (new_date, new_material_id, new_supplier_id, new_quantity,
+         new_unit_price, new_total, new_notes, new_paid, import_id))
+
+    conn.commit()
+    conn.close()
+    flash('Cap nhat phieu nhap thanh cong!', 'success')
     return redirect(url_for('import_page', month=month))
 
 
