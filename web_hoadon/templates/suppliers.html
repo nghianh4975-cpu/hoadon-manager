@@ -60,7 +60,7 @@
                                 <td>{{ sup.phone or '-' }}</td>
                                 <td>{{ sup.address or '-' }}</td>
                                 <td>{{ sup.notes or '-' }}</td>
-                                <td>
+                                <td onclick="event.stopPropagation()">
                                     <form method="POST" action="{{ url_for('suppliers_delete', supplier_id=sup.id) }}"
                                           onsubmit="return confirm('Xoa NCC nay?')">
                                         <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
