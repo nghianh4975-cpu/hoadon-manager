@@ -63,7 +63,6 @@ def from_json(value):
 # ============================================================
 # DATABASE - PostgreSQL tren Render, SQLite khi local
 # ============================================================
-USE_PG = bool(os.environ.get('DATABASE_URL'))
 
 class HybridCursor:
     def __init__(self, cursor, use_pg):
@@ -71,9 +70,12 @@ class HybridCursor:
         self._use_pg = use_pg
         self._col_names = None
     def execute(self, sql, params=None):
-        if self._use_pg and params:
-            sql = sql.replace('?', '%s')
-        self._cursor.execute(sql, params)
+        if params is not None:
+            if self._use_pg:
+                sql = sql.replace('?', '%s')
+            self._cursor.execute(sql, params)
+        else:
+            self._cursor.execute(sql)
         if self._use_pg:
             self._col_names = [desc[0] for desc in self._cursor.description] if self._cursor.description else []
         return self
@@ -211,6 +213,49 @@ def init_db():
             is_read INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS material_groups (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(255) NOT NULL,
+            color VARCHAR(20) DEFAULT '',
+            sort_order INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS suppliers (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(255) NOT NULL,
+            phone VARCHAR(50),
+            address TEXT,
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS materials (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(255) NOT NULL,
+            unit VARCHAR(50) DEFAULT '',
+            group_id INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS imports (
+            id SERIAL PRIMARY KEY,
+            date VARCHAR(20) NOT NULL,
+            material_id INTEGER,
+            supplier_id INTEGER,
+            quantity REAL DEFAULT 0,
+            unit_price REAL DEFAULT 0,
+            total_price REAL DEFAULT 0,
+            notes TEXT,
+            created_by VARCHAR(255),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS inventory (
+            id SERIAL PRIMARY KEY,
+            month VARCHAR(7) NOT NULL,
+            material_id INTEGER,
+            opening_stock REAL DEFAULT 0,
+            import_qty REAL DEFAULT 0,
+            closing_stock REAL DEFAULT 0,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
         c.execute('SELECT COUNT(*) FROM users')
         if c.fetchone()[0] == 0:
             c.execute('INSERT INTO users (username, password, role) VALUES (%s, %s, %s)',
@@ -258,6 +303,51 @@ def init_db():
             invoice_id INTEGER,
             is_read INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+        # ---- Nhom hang truoc (vi materials tham chieu no) ----
+        c.execute('''CREATE TABLE IF NOT EXISTS material_groups (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            color TEXT DEFAULT '',
+            sort_order INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS suppliers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            phone TEXT,
+            address TEXT,
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS materials (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            unit TEXT DEFAULT '',
+            group_id INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS imports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            material_id INTEGER,
+            supplier_id INTEGER,
+            quantity REAL DEFAULT 0,
+            unit_price REAL DEFAULT 0,
+            total_price REAL DEFAULT 0,
+            notes TEXT,
+            created_by TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS inventory (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            month TEXT NOT NULL,
+            material_id INTEGER,
+            opening_stock REAL DEFAULT 0,
+            import_qty REAL DEFAULT 0,
+            closing_stock REAL DEFAULT 0,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(month, material_id)
         )''')
         c.execute('SELECT COUNT(*) FROM users')
         if c.fetchone()[0] == 0:
@@ -1676,6 +1766,1090 @@ def backup_data():
     filename = f'backup_hoadon_{dt.now().strftime("%Y%m%d_%H%M%S")}.json'
     response.headers['Content-Disposition'] = f'attachment; filename={filename}'
     return response
+
+# ============================================================
+# ROUTES - NHAP HANG
+# ============================================================
+
+# Trang tong hop nhap hang - hien thi 2 muc: Tong hop NCC + Ton kho
+@app.route('/import')
+@login_required
+def import_page():
+    month = request.args.get('month', datetime.date.today().strftime('%Y-%m'))
+
+    conn = get_db()
+    c = conn.cursor()
+
+    # Lay danh sach NCC
+    c.execute('SELECT id, name FROM suppliers ORDER BY name')
+    suppliers = c.fetchall()
+
+    # Lay danh sach nguyen lieu (co nhom)
+    c.execute('''SELECT m.id, m.name, m.unit, m.group_id, g.name as group_name, g.color as group_color
+        FROM materials m LEFT JOIN material_groups g ON m.group_id = g.id
+        ORDER BY g.sort_order, g.name, m.name''')
+    materials = c.fetchall()
+
+    # Lay danh sach nhom hang
+    c.execute('SELECT * FROM material_groups ORDER BY sort_order, name')
+    groups = c.fetchall()
+
+    # Tong hop nhap theo NCC trong thang
+    ncc_summary = []
+    for sup in suppliers:
+        c.execute('''SELECT COALESCE(SUM(i.total_price), 0) as total_debt
+            FROM imports i WHERE i.supplier_id = ? AND i.date LIKE ?''',
+            (sup['id'], f'{month}%'))
+        row = c.fetchone()
+        total_debt = float(row[0]) if row and row[0] else 0
+        if total_debt > 0:
+            ncc_summary.append({'id': sup['id'], 'name': sup['name'], 'total_debt': total_debt})
+
+    # Tong hop theo nhom hang trong thang - luon hien thi tat ca nhom
+    group_summary = []
+    for grp in groups:
+        c.execute('''SELECT COALESCE(SUM(i.total_price), 0) as total, COUNT(*) as cnt
+            FROM imports i WHERE i.material_id IN
+            (SELECT id FROM materials WHERE group_id = ?) AND i.date LIKE ?''',
+            (grp['id'], f'{month}%'))
+        row = c.fetchone()
+        total = float(row[0]) if row and row[0] else 0
+        cnt = int(row[1]) if row and row[1] else 0
+        group_summary.append({
+            'id': grp['id'], 'name': grp['name'],
+            'color': grp['color'] or '#6c757d', 'total_amount': total, 'count': cnt
+        })
+    # Nhom "Khong co nhom"
+    c.execute('''SELECT COALESCE(SUM(i.total_price), 0) as total, COUNT(*) as cnt
+        FROM imports i WHERE i.material_id IN
+        (SELECT id FROM materials WHERE group_id IS NULL) AND i.date LIKE ?''',
+        (f'{month}%',))
+    row = c.fetchone()
+    group_summary.append({
+        'id': 0, 'name': 'Khong co nhom',
+        'color': '#6c757d',
+        'total_amount': float(row[0]) if row and row[0] else 0,
+        'count': int(row[1]) if row and row[1] else 0
+    })
+
+    # Lay tat ca import trong thang
+    c.execute('''SELECT i.date, s.name as supplier_name, m.name as material_name,
+        m.unit, i.quantity, i.unit_price, i.total_price, i.id
+        FROM imports i
+        LEFT JOIN suppliers s ON i.supplier_id = s.id
+        LEFT JOIN materials m ON i.material_id = m.id
+        WHERE i.date LIKE ? ORDER BY i.date DESC, i.id DESC''',
+        (f'{month}%',))
+    imports_list = c.fetchall()
+
+    # Tinh ton kho cho tung nguyen lieu trong thang
+    # opening = closing_stock cua thang truoc
+    # import trong thang
+    # closing = opening + import - xuat
+    # xuat = (opening + import) - closing  ->  xuat = import + opening - closing
+
+    prev_month = (datetime.date(int(month[:4]), int(month[5:7]), 1)
+                  - datetime.timedelta(days=1)).strftime('%Y-%m')
+    next_year = int(month[:4])
+    next_mon = int(month[5:7]) + 1
+    if next_mon > 12:
+        next_year += 1
+        next_mon = 1
+    next_month = f'{next_year:04d}-{next_mon:02d}'
+
+    inventory_data = []
+    for mat in materials:
+        # ton cuoi thang truoc
+        c.execute('''SELECT closing_stock FROM inventory
+            WHERE month = ? AND material_id = ?''',
+            (prev_month, mat['id']))
+        row = c.fetchone()
+        opening = float(row[0]) if row and row[0] else 0
+
+        # tong nhap trong thang
+        c.execute('''SELECT COALESCE(SUM(quantity), 0) FROM imports
+            WHERE date LIKE ? AND material_id = ?''',
+            (f'{month}%', mat['id']))
+        row = c.fetchone()
+        import_qty = float(row[0]) if row and row[0] else 0
+
+        # ton cuoi thang hien tai (co the chua cap nhat)
+        c.execute('''SELECT closing_stock FROM inventory
+            WHERE month = ? AND material_id = ?''',
+            (month, mat['id']))
+        row = c.fetchone()
+        closing = float(row[0]) if row and row[0] else 0
+
+        # xuat = (nhap + ton thang truoc) - ton thang hien tai
+        export_qty = import_qty + opening - closing if closing > 0 else 0
+
+        inventory_data.append({
+            'material': mat,
+            'opening': opening,
+            'import_qty': import_qty,
+            'export_qty': export_qty,
+            'closing': closing,
+        })
+
+    conn.close()
+
+    return render_template('import.html',
+        suppliers=suppliers, materials=materials,
+        ncc_summary=ncc_summary, imports_list=imports_list,
+        inventory_data=inventory_data, month=month,
+        today_str=datetime.date.today().strftime('%Y-%m-%d'),
+        prev_month_url=prev_month, next_month_url=next_month,
+        group_summary=group_summary)
+
+
+# Trang nhap nguyen lieu nhanh - chi de nhap, khong xem bang
+@app.route('/import/enter', methods=['GET', 'POST'])
+@login_required
+def import_enter():
+    conn = get_db()
+    c = conn.cursor()
+
+    # Lay danh sach nguyen lieu (co nhom)
+    c.execute('''SELECT m.id, m.name, m.unit, m.group_id,
+        g.name as group_name, g.color as group_color
+        FROM materials m LEFT JOIN material_groups g ON m.group_id = g.id
+        ORDER BY g.sort_order, g.name, m.name''')
+    materials = c.fetchall()
+
+    # Lay danh sach NCC
+    c.execute('SELECT id, name FROM suppliers ORDER BY name')
+    suppliers = c.fetchall()
+
+    # Lay nhom hang de loc
+    c.execute('SELECT * FROM material_groups ORDER BY sort_order, name')
+    groups = c.fetchall()
+
+    today_str = datetime.date.today().strftime('%Y-%m-%d')
+    default_supplier_id = request.args.get('supplier_id', '')
+    default_material_id = request.args.get('material_id', '')
+
+    # Lay phieu nhap gan day
+    c.execute('''SELECT i.date, s.name as supplier_name, m.name as material_name,
+        i.quantity, i.unit_price, i.total_price, i.id
+        FROM imports i
+        LEFT JOIN suppliers s ON i.supplier_id = s.id
+        LEFT JOIN materials m ON i.material_id = m.id
+        ORDER BY i.id DESC LIMIT 50''')
+    recent_imports = c.fetchall()
+
+    conn.close()
+
+    if request.method == 'POST':
+        date = request.form.get('date', today_str)
+        material_id = request.form.get('material_id', '')
+        supplier_id = request.form.get('supplier_id', '')
+        quantity = float(request.form.get('quantity', 0) or 0)
+        unit_price = float(request.form.get('unit_price', 0) or 0)
+        notes = request.form.get('notes', '')
+
+        if not material_id or quantity <= 0 or unit_price <= 0:
+            flash('Vui long dien day du thong tin!', 'danger')
+            conn.close()
+            return render_template('import_enter.html',
+                materials=materials, suppliers=suppliers, groups=groups,
+                today_str=today_str,
+                default_supplier_id=default_supplier_id,
+                default_material_id=default_material_id)
+
+        total_price = quantity * unit_price
+        month = date[:7]
+
+        c.execute('''INSERT INTO imports
+            (date, material_id, supplier_id, quantity, unit_price, total_price, notes, created_by)
+            VALUES (?,?,?,?,?,?,?,?)''',
+            (date, material_id, supplier_id, quantity, unit_price, total_price, notes,
+             session.get('username', 'admin')))
+
+        # Cap nhat ton kho
+        c.execute('''SELECT id, opening_stock, import_qty, closing_stock FROM inventory
+            WHERE month = ? AND material_id = ?''',
+            (month, material_id))
+        inv = c.fetchone()
+        if inv:
+            new_import_qty = float(inv['import_qty'] or 0) + quantity
+            new_closing = float(inv['opening_stock'] or 0) + new_import_qty
+            c.execute('''UPDATE inventory SET import_qty=?, closing_stock=?,
+                updated_at=CURRENT_TIMESTAMP WHERE id=?''',
+                (new_import_qty, new_closing, inv['id']))
+        else:
+            prev_month = (datetime.date(int(month[:4]), int(month[5:7]), 1)
+                          - datetime.timedelta(days=1)).strftime('%Y-%m')
+            c.execute('''SELECT closing_stock FROM inventory
+                WHERE month = ? AND material_id = ?''',
+                (prev_month, material_id))
+            prev = c.fetchone()
+            opening = float(prev[0]) if prev and prev[0] else 0
+            closing = opening + quantity
+            c.execute('''INSERT INTO inventory
+                (month, material_id, opening_stock, import_qty, closing_stock)
+                VALUES (?,?,?,?,?)''',
+                (month, material_id, opening, quantity, closing))
+
+        conn.commit()
+        flash(f'Da nhap thanh cong! {quantity} x {unit_price:,.0f} = {total_price:,.0f} VND', 'success')
+
+        # Giu lai gia tri da nhap de nhap tiep
+        default_supplier_id = supplier_id
+        default_material_id = material_id
+
+    conn.close()
+    return render_template('import_enter.html',
+        materials=materials, suppliers=suppliers, groups=groups,
+        today_str=today_str,
+        default_supplier_id=default_supplier_id,
+        default_material_id=default_material_id,
+        recent_imports=recent_imports)
+
+
+# Them phieu nhap
+@app.route('/import/add', methods=['POST'])
+@login_required
+def import_add():
+    date = request.form.get('date', '')
+    material_id = request.form.get('material_id', '')
+    supplier_id = request.form.get('supplier_id', '')
+    quantity = float(request.form.get('quantity', 0) or 0)
+    unit_price = float(request.form.get('unit_price', 0) or 0)
+    notes = request.form.get('notes', '')
+
+    if not date or not material_id or quantity <= 0 or unit_price <= 0:
+        flash('Vui long dien day du thong tin!', 'danger')
+        return redirect(url_for('import_page'))
+
+    total_price = quantity * unit_price
+    month = date[:7]  # YYYY-MM
+
+    conn = get_db()
+    c = conn.cursor()
+
+    # Insert phieu nhap
+    if USE_PG:
+        c.execute('''INSERT INTO imports
+            (date, material_id, supplier_id, quantity, unit_price, total_price, notes, created_by)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)''',
+            (date, material_id, supplier_id, quantity, unit_price, total_price, notes,
+             session['username']))
+    else:
+        c.execute('''INSERT INTO imports
+            (date, material_id, supplier_id, quantity, unit_price, total_price, notes, created_by)
+            VALUES (?,?,?,?,?,?,?,?)''',
+            (date, material_id, supplier_id, quantity, unit_price, total_price, notes,
+             session['username']))
+
+    # Cap nhat ton kho: neu chua co record thi insert, neu co thi update
+    # Cong nhap vao closing_stock
+    c.execute('''SELECT id, opening_stock, import_qty, closing_stock FROM inventory
+        WHERE month = ? AND material_id = ?''',
+        (month, material_id))
+    inv = c.fetchone()
+
+    if inv:
+        new_import_qty = float(inv['import_qty'] or 0) + quantity
+        new_closing = float(inv['opening_stock'] or 0) + new_import_qty
+        c.execute('''UPDATE inventory SET import_qty=?, closing_stock=?,
+            updated_at=CURRENT_TIMESTAMP WHERE id=?''',
+            (new_import_qty, new_closing, inv['id']))
+    else:
+        # Tinh opening tu thang truoc
+        prev_month = (datetime.date(int(month[:4]), int(month[5:7]), 1)
+                      - datetime.timedelta(days=1)).strftime('%Y-%m')
+        c.execute('''SELECT closing_stock FROM inventory
+            WHERE month = ? AND material_id = ?''',
+            (prev_month, material_id))
+        prev = c.fetchone()
+        opening = float(prev[0]) if prev and prev[0] else 0
+        closing = opening + quantity
+
+        c.execute('''INSERT INTO inventory
+            (month, material_id, opening_stock, import_qty, closing_stock)
+            VALUES (?,?,?,?,?)''',
+            (month, material_id, opening, quantity, closing))
+
+    conn.commit()
+    conn.close()
+
+    flash('Them phieu nhap thanh cong!', 'success')
+    return redirect(url_for('import_page', month=month))
+
+
+# Cap nhat ton kho (closing stock)
+@app.route('/import/update-inventory', methods=['POST'])
+@login_required
+def import_update_inventory():
+    month = request.form.get('month', '')
+    material_id = request.form.get('material_id', '')
+    closing = float(request.form.get('closing_stock', 0) or 0)
+
+    conn = get_db()
+    c = conn.cursor()
+
+    c.execute('''SELECT id, opening_stock, import_qty FROM inventory
+        WHERE month = ? AND material_id = ?''',
+        (month, material_id))
+    inv = c.fetchone()
+
+    if inv:
+        c.execute('''UPDATE inventory SET closing_stock=?, updated_at=CURRENT_TIMESTAMP WHERE id=?''',
+            (closing, inv['id']))
+    else:
+        prev_month = (datetime.date(int(month[:4]), int(month[5:7]), 1)
+                      - datetime.timedelta(days=1)).strftime('%Y-%m')
+        c.execute('''SELECT closing_stock FROM inventory
+            WHERE month = ? AND material_id = ?''',
+            (prev_month, material_id))
+        prev = c.fetchone()
+        opening = float(prev[0]) if prev and prev[0] else 0
+        c.execute('''INSERT INTO inventory (month, material_id, opening_stock, import_qty, closing_stock)
+            VALUES (?,?,?,0,?)''',
+            (month, material_id, opening, closing))
+
+    conn.commit()
+    conn.close()
+
+    flash('Cap nhat ton kho thanh cong!', 'success')
+    return redirect(url_for('import_page', month=month))
+
+
+# Xoa phieu nhap
+@app.route('/import/delete/<int:import_id>', methods=['POST'])
+@login_required
+def import_delete(import_id):
+    conn = get_db()
+    c = conn.cursor()
+
+    # Lay thong tin phieu nhap
+    c.execute('SELECT date, material_id, quantity FROM imports WHERE id = ?', (import_id,))
+    imp = c.fetchone()
+    if imp:
+        month = imp['date'][:7]
+        material_id = imp['material_id']
+
+        # Tru quantity khoi ton kho
+        c.execute('''SELECT id, opening_stock, import_qty, closing_stock FROM inventory
+            WHERE month = ? AND material_id = ?''',
+            (month, material_id))
+        inv = c.fetchone()
+        if inv:
+            new_import_qty = max(0, float(inv['import_qty'] or 0) - float(imp['quantity'] or 0))
+            new_closing = float(inv['opening_stock'] or 0) + new_import_qty
+            c.execute('''UPDATE inventory SET import_qty=?, closing_stock=?,
+                updated_at=CURRENT_TIMESTAMP WHERE id=?''',
+                (new_import_qty, new_closing, inv['id']))
+
+        c.execute('DELETE FROM imports WHERE id = ?', (import_id,))
+        conn.commit()
+        flash('Xoa phieu nhap thanh cong!', 'success')
+    conn.close()
+    return redirect(url_for('import_page', month=request.args.get('month', '')))
+
+
+# Nhap hang tu text (batch import - giong import_text nhung cho nhap)
+@app.route('/import/batch', methods=['GET', 'POST'])
+@login_required
+def import_batch():
+    conn = get_db()
+    c = conn.cursor()
+
+    if request.method == 'POST':
+        date = request.form.get('import_date', datetime.date.today().strftime('%Y-%m-%d'))
+        supplier_id = request.form.get('supplier_id', '') or None
+        group_id = request.form.get('group_id', '') or None
+        month = date[:7]
+
+        added = 0
+
+        # Lay tat ca cac field tu form
+        for key in sorted(request.form.keys()):
+            if key.startswith('name_'):
+                idx = key[5:]
+                name = request.form.get('name_' + idx, '').strip()
+                if not name:
+                    continue
+                qty = float(request.form.get('qty_' + idx, 0) or 0)
+                unit = request.form.get('unit_' + idx, '').strip()
+                price = float(request.form.get('price_' + idx, 0) or 0)
+                total = qty * price
+
+                # Lay nhom cua dong nay, hoac mac dinh tu global
+                row_group_id = request.form.get('row_group_' + idx, '') or None
+                effective_group_id = row_group_id if row_group_id else group_id
+
+                # Tim hoac tao nguyen lieu
+                c.execute('SELECT id, group_id FROM materials WHERE name = ?', (name,))
+                mat = c.fetchone()
+                if mat:
+                    material_id = mat['id']
+                    # Neu material chua co nhom, gan nhom cua dong nay
+                    if (mat['group_id'] is None or mat['group_id'] == '') and effective_group_id:
+                        c.execute('UPDATE materials SET group_id=? WHERE id=?', (effective_group_id, material_id))
+                    # Cap nhat don vi neu khac rong
+                    if unit:
+                        c.execute('UPDATE materials SET unit=? WHERE id=? AND (unit IS NULL OR unit="")',
+                                  (unit, material_id))
+                else:
+                    if USE_PG:
+                        c.execute('INSERT INTO materials (name, group_id, unit) VALUES (%s,%s,%s) RETURNING id',
+                                  (name, effective_group_id, unit))
+                        material_id = c.fetchone()[0]
+                    else:
+                        c.execute('INSERT INTO materials (name, group_id, unit) VALUES (?,?,?)',
+                                  (name, effective_group_id, unit))
+                        material_id = c.lastrowid
+
+                if USE_PG:
+                    c.execute('''INSERT INTO imports
+                        (date, material_id, supplier_id, quantity, unit_price, total_price, created_by)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s)''',
+                        (date, material_id, supplier_id, qty, price, total, session['username']))
+                else:
+                    c.execute('''INSERT INTO imports
+                        (date, material_id, supplier_id, quantity, unit_price, total_price, created_by)
+                        VALUES (?,?,?,?,?,?,?)''',
+                        (date, material_id, supplier_id, qty, price, total, session['username']))
+
+                # Cap nhat ton kho
+                c.execute('''SELECT id, opening_stock, import_qty, closing_stock FROM inventory
+                    WHERE month = ? AND material_id = ?''',
+                    (month, material_id))
+                inv = c.fetchone()
+                if inv:
+                    new_import_qty = float(inv['import_qty'] or 0) + qty
+                    new_closing = float(inv['opening_stock'] or 0) + new_import_qty
+                    c.execute('''UPDATE inventory SET import_qty=?, closing_stock=?,
+                        updated_at=CURRENT_TIMESTAMP WHERE id=?''',
+                        (new_import_qty, new_closing, inv['id']))
+                else:
+                    prev_month = (datetime.date(int(month[:4]), int(month[5:7]), 1)
+                                  - datetime.timedelta(days=1)).strftime('%Y-%m')
+                    c.execute('''SELECT closing_stock FROM inventory
+                        WHERE month = ? AND material_id = ?''',
+                        (prev_month, material_id))
+                    prev = c.fetchone()
+                    opening = float(prev[0]) if prev and prev[0] else 0
+                    closing = opening + qty
+                    c.execute('''INSERT INTO inventory
+                        (month, material_id, opening_stock, import_qty, closing_stock)
+                        VALUES (?,?,?,?,?)''',
+                        (month, material_id, opening, qty, closing))
+
+                added += 1
+
+        conn.commit()
+        conn.close()
+        flash(f'Da them {added} phieu nhap!', 'success')
+        return redirect(url_for('import_batch', month=month))
+
+    c.execute('SELECT id, name FROM suppliers ORDER BY name')
+    suppliers = c.fetchall()
+    c.execute('SELECT id, name FROM materials ORDER BY name')
+    materials = c.fetchall()
+    c.execute('SELECT * FROM material_groups ORDER BY sort_order, name')
+    groups = c.fetchall()
+
+    # Lay group summary hien tai (bao gom ca khong co nhom)
+    today = datetime.date.today()
+    current_month = today.strftime('%Y-%m')
+    c.execute('''SELECT g.id, g.name, g.color,
+        COALESCE(SUM(i.total_price), 0) as total_amount,
+        COUNT(i.id) as count
+        FROM material_groups g
+        LEFT JOIN materials m ON m.group_id = g.id
+        LEFT JOIN imports i ON i.material_id = m.id AND i.date LIKE ?
+        GROUP BY g.id ORDER BY g.sort_order, g.name''', (f'{current_month}%',))
+    group_summary = list(c.fetchall())
+
+    # Lay du lieu khong co nhom
+    c.execute('''SELECT
+        COALESCE(SUM(i.total_price), 0) as total_amount,
+        COUNT(i.id) as count
+        FROM imports i
+        LEFT JOIN materials m ON i.material_id = m.id
+        WHERE i.date LIKE ? AND (m.group_id IS NULL OR m.group_id = '')''',
+        (f'{current_month}%',))
+    no_group = c.fetchone()
+    no_group_summary = {
+        'id': 0,
+        'name': 'Khong co nhom',
+        'color': '#cccccc',
+        'total_amount': no_group['total_amount'] if no_group else 0,
+        'count': no_group['count'] if no_group else 0
+    }
+    conn.close()
+
+    return render_template('import_batch.html',
+        suppliers=suppliers, materials=materials, groups=groups,
+        today_str=datetime.date.today().strftime('%Y-%m-%d'),
+        group_summary=group_summary,
+        no_group_summary=no_group_summary)
+
+
+# Export Excel phan Nhap
+@app.route('/import/export')
+@login_required
+def export_import():
+    month = request.args.get('month', datetime.date.today().strftime('%Y-%m'))
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+
+    wb = Workbook()
+
+    conn = get_db()
+    c = conn.cursor()
+
+    # Lay du lieu import (co nhom hang)
+    c.execute('''SELECT i.date, s.name as supplier_name, m.name as material_name,
+        g.name as group_name, g.color as group_color,
+        m.unit, i.quantity, i.unit_price, i.total_price
+        FROM imports i
+        LEFT JOIN suppliers s ON i.supplier_id = s.id
+        LEFT JOIN materials m ON i.material_id = m.id
+        LEFT JOIN material_groups g ON m.group_id = g.id
+        WHERE i.date LIKE ? ORDER BY i.date ASC, i.id ASC''',
+        (f'{month}%',))
+    imports_list = c.fetchall()
+
+    # Lay du lieu NCC
+    c.execute('''SELECT s.name,
+        COALESCE(SUM(i.total_price), 0) as total_debt
+        FROM imports i
+        LEFT JOIN suppliers s ON i.supplier_id = s.id
+        WHERE i.date LIKE ? AND s.id IS NOT NULL
+        GROUP BY s.id, s.name
+        ORDER BY s.name''',
+        (f'{month}%',))
+    ncc_rows = c.fetchall()
+
+    # Lay du lieu ton kho
+    c.execute('''SELECT m.name, m.unit, i.opening_stock, i.import_qty,
+        i.closing_stock
+        FROM inventory i
+        LEFT JOIN materials m ON i.material_id = m.id
+        WHERE i.month = ? ORDER BY m.name''',
+        (month,))
+    inv_rows = c.fetchall()
+
+    # Lay du lieu tong hop theo nhom hang
+    c.execute('''SELECT g.name as group_name, g.color as group_color,
+        COALESCE(SUM(i.total_price), 0) as total, COUNT(i.id) as cnt
+        FROM imports i
+        LEFT JOIN materials m ON i.material_id = m.id
+        LEFT JOIN material_groups g ON m.group_id = g.id
+        WHERE i.date LIKE ?
+        GROUP BY g.id, g.name, g.color
+        ORDER BY g.sort_order, g.name''',
+        (f'{month}%',))
+    group_rows = c.fetchall()
+
+    # ==================== SHEET 1: CHI TIET NHAP HANG ====================
+    ws = wb.active
+    ws.title = "1-Chi Tiet Nhap"
+
+    ws['A1'] = f'CHI TIET NHAP HANG THANG {month}'
+    ws['A1'].font = Font(bold=True, size=16, color='FFFFFF')
+    ws['A1'].fill = PatternFill(start_color='0078D4', end_color='0078D4', fill_type='solid')
+    ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
+    ws.merge_cells('A1:H1')
+    ws.row_dimensions[1].height = 35
+
+    headers = ['Ngay', 'Nha Cung Cap', 'Ten Nguyen Lieu', 'Nhom Hang', 'Don Vi', 'So Luong', 'Don Gia', 'Thanh Tien']
+    for i, h in enumerate(headers, 1):
+        cell = ws.cell(row=2, column=i, value=h)
+        cell.font = Font(bold=True, color='FFFFFF')
+        cell.fill = PatternFill(start_color='0078D4', end_color='0078D4', fill_type='solid')
+        cell.alignment = Alignment(horizontal='center')
+        cell.border = Border(left=Side(style='thin'), right=Side(style='thin'),
+                            top=Side(style='thin'), bottom=Side(style='thin'))
+
+    row_num = 3
+    grand_total = 0
+    for imp in imports_list:
+        ws.cell(row=row_num, column=1, value=imp[0])
+        ws.cell(row=row_num, column=2, value=imp[1] or '')
+        ws.cell(row=row_num, column=3, value=imp[2] or '')
+        ws.cell(row=row_num, column=4, value=imp[3] or '')
+        ws.cell(row=row_num, column=5, value=imp[5] or '')
+        ws.cell(row=row_num, column=6, value=float(imp[6] or 0))
+        ws.cell(row=row_num, column=6).number_format = '#,##0.##'
+        ws.cell(row=row_num, column=7, value=float(imp[7] or 0))
+        ws.cell(row=row_num, column=7).number_format = '#,##0'
+        ws.cell(row=row_num, column=8, value=float(imp[8] or 0))
+        ws.cell(row=row_num, column=8).number_format = '#,##0'
+        for col in range(1, 9):
+            ws.cell(row=row_num, column=col).border = Border(
+                left=Side(style='thin'), right=Side(style='thin'),
+                top=Side(style='thin'), bottom=Side(style='thin'))
+        grand_total += float(imp[8] or 0)
+        row_num += 1
+
+    # Tong cong
+    ws.cell(row=row_num, column=1, value='TONG CONG').font = Font(bold=True, color='FFFFFF')
+    ws.cell(row=row_num, column=8, value=grand_total)
+    ws.cell(row=row_num, column=8).number_format = '#,##0'
+    ws.cell(row=row_num, column=8).font = Font(bold=True, color='FFFFFF')
+    for col in range(1, 9):
+        ws.cell(row=row_num, column=col).fill = PatternFill(
+            start_color='0078D4', end_color='0078D4', fill_type='solid')
+        ws.cell(row=row_num, column=col).border = Border(
+            left=Side(style='thin'), right=Side(style='thin'),
+            top=Side(style='thin'), bottom=Side(style='thin'))
+
+    ws.column_dimensions['A'].width = 14
+    ws.column_dimensions['B'].width = 25
+    ws.column_dimensions['C'].width = 25
+    ws.column_dimensions['D'].width = 18
+    ws.column_dimensions['E'].width = 10
+    ws.column_dimensions['F'].width = 14
+    ws.column_dimensions['G'].width = 16
+    ws.column_dimensions['H'].width = 18
+
+    # ==================== SHEET 2: TONG HOP NCC ====================
+    ws2 = wb.create_sheet("2-Tong Hop NCC")
+
+    ws2['A1'] = f'TONG HOP CONG NO NCC THANG {month}'
+    ws2['A1'].font = Font(bold=True, size=16, color='FFFFFF')
+    ws2['A1'].fill = PatternFill(start_color='107C10', end_color='107C10', fill_type='solid')
+    ws2['A1'].alignment = Alignment(horizontal='center', vertical='center')
+    ws2.merge_cells('A1:C1')
+    ws2.row_dimensions[1].height = 35
+
+    for i, h in enumerate(['Nha Cung Cap', 'Tong Cong No', 'Ghi Chu'], 1):
+        cell = ws2.cell(row=2, column=i, value=h)
+        cell.font = Font(bold=True, color='FFFFFF')
+        cell.fill = PatternFill(start_color='107C10', end_color='107C10', fill_type='solid')
+        cell.alignment = Alignment(horizontal='center')
+        cell.border = Border(left=Side(style='thin'), right=Side(style='thin'),
+                            top=Side(style='thin'), bottom=Side(style='thin'))
+
+    row_num = 3
+    for ncc in ncc_rows:
+        ws2.cell(row=row_num, column=1, value=ncc[0])
+        ws2.cell(row=row_num, column=2, value=float(ncc[1]))
+        ws2.cell(row=row_num, column=2).number_format = '#,##0'
+        ws2.cell(row=row_num, column=3, value=f'Tong nhap thang {month}')
+        for col in range(1, 4):
+            ws2.cell(row=row_num, column=col).border = Border(
+                left=Side(style='thin'), right=Side(style='thin'),
+                top=Side(style='thin'), bottom=Side(style='thin'))
+        row_num += 1
+
+    ws2.column_dimensions['A'].width = 30
+    ws2.column_dimensions['B'].width = 20
+    ws2.column_dimensions['C'].width = 25
+
+    # ==================== SHEET 3: TON KHO ====================
+    ws3 = wb.create_sheet("3-Ton Kho")
+
+    ws3['A1'] = f'TON KHO THANG {month}'
+    ws3['A1'].font = Font(bold=True, size=16, color='FFFFFF')
+    ws3['A1'].fill = PatternFill(start_color='FFC107', end_color='FFC107', fill_type='solid')
+    ws3['A1'].alignment = Alignment(horizontal='center', vertical='center')
+    ws3.merge_cells('A1:F1')
+    ws3.row_dimensions[1].height = 35
+
+    for i, h in enumerate(['Ten Nguyen Lieu', 'Don Vi', 'Ton Dau Thang', 'Nhap', 'Xuat', 'Ton Cuoi Thang'], 1):
+        cell = ws3.cell(row=2, column=i, value=h)
+        cell.font = Font(bold=True, color='FFFFFF')
+        cell.fill = PatternFill(start_color='FFC107', end_color='FFC107', fill_type='solid')
+        cell.fill = PatternFill(start_color='D48806', end_color='D48806', fill_type='solid')
+        cell.alignment = Alignment(horizontal='center')
+        cell.border = Border(left=Side(style='thin'), right=Side(style='thin'),
+                            top=Side(style='thin'), bottom=Side(style='thin'))
+
+    row_num = 3
+    for inv in inv_rows:
+        ws3.cell(row=row_num, column=1, value=inv[0] or '')
+        ws3.cell(row=row_num, column=2, value=inv[1] or '')
+        ws3.cell(row=row_num, column=3, value=float(inv[2] or 0))
+        ws3.cell(row=row_num, column=3).number_format = '#,##0.##'
+        ws3.cell(row=row_num, column=4, value=float(inv[3] or 0))
+        ws3.cell(row=row_num, column=4).number_format = '#,##0.##'
+        export_val = float(inv[2] or 0) + float(inv[3] or 0) - float(inv[4] or 0)
+        ws3.cell(row=row_num, column=5, value=export_val if float(inv[4] or 0) > 0 else 0)
+        ws3.cell(row=row_num, column=5).number_format = '#,##0.##'
+        ws3.cell(row=row_num, column=6, value=float(inv[4] or 0))
+        ws3.cell(row=row_num, column=6).number_format = '#,##0.##'
+        for col in range(1, 7):
+            ws3.cell(row=row_num, column=col).border = Border(
+                left=Side(style='thin'), right=Side(style='thin'),
+                top=Side(style='thin'), bottom=Side(style='thin'))
+        row_num += 1
+
+    ws3.column_dimensions['A'].width = 25
+    ws3.column_dimensions['B'].width = 10
+    ws3.column_dimensions['C'].width = 15
+    ws3.column_dimensions['D'].width = 12
+    ws3.column_dimensions['E'].width = 12
+    ws3.column_dimensions['F'].width = 15
+
+    # ==================== SHEET 4: TONG HOP NHOM HANG ====================
+    ws4 = wb.create_sheet("4-Tong Hop Nhom")
+
+    ws4['A1'] = f'TONG HOP NHOM HANG THANG {month}'
+    ws4['A1'].font = Font(bold=True, size=16, color='FFFFFF')
+    ws4['A1'].fill = PatternFill(start_color='6c3F00', end_color='6c3F00', fill_type='solid')
+    ws4['A1'].alignment = Alignment(horizontal='center', vertical='center')
+    ws4.merge_cells('A1:E1')
+    ws4.row_dimensions[1].height = 35
+
+    for i, h in enumerate(['Nhom Hang', 'So Phieu', 'Tong Gia Tri', 'Ty Le (%)', 'Ghi Chu'], 1):
+        cell = ws4.cell(row=2, column=i, value=h)
+        cell.font = Font(bold=True, color='FFFFFF')
+        cell.fill = PatternFill(start_color='6c3F00', end_color='6c3F00', fill_type='solid')
+        cell.alignment = Alignment(horizontal='center')
+        cell.border = Border(left=Side(style='thin'), right=Side(style='thin'),
+                            top=Side(style='thin'), bottom=Side(style='thin'))
+
+    row_num = 3
+    grand_total = sum(float(r[2] or 0) for r in group_rows)
+    for grp in group_rows:
+        total = float(grp[2] or 0)
+        pct = (total / grand_total * 100) if grand_total > 0 else 0
+        note = f'Tong nhap thang {month}'
+        ws4.cell(row=row_num, column=1, value=grp[0] or 'Khong co nhom')
+        ws4.cell(row=row_num, column=2, value=int(grp[3] or 0))
+        ws4.cell(row=row_num, column=3, value=total)
+        ws4.cell(row=row_num, column=3).number_format = '#,##0'
+        ws4.cell(row=row_num, column=4, value=pct / 100)
+        ws4.cell(row=row_num, column=4).number_format = '0.0%'
+        ws4.cell(row=row_num, column=5, value=note)
+        for col in range(1, 6):
+            ws4.cell(row=row_num, column=col).border = Border(
+                left=Side(style='thin'), right=Side(style='thin'),
+                top=Side(style='thin'), bottom=Side(style='thin'))
+        row_num += 1
+
+    # Tong cong
+    ws4.cell(row=row_num, column=1, value='TONG CONG').font = Font(bold=True, color='FFFFFF')
+    ws4.cell(row=row_num, column=2, value=sum(int(r[3] or 0) for r in group_rows))
+    ws4.cell(row=row_num, column=3, value=grand_total)
+    ws4.cell(row=row_num, column=3).number_format = '#,##0'
+    ws4.cell(row=row_num, column=4, value=1.0)
+    ws4.cell(row=row_num, column=4).number_format = '0.0%'
+    for col in range(1, 6):
+        ws4.cell(row=row_num, column=col).fill = PatternFill(
+            start_color='6c3F00', end_color='6c3F00', fill_type='solid')
+        ws4.cell(row=row_num, column=col).font = Font(bold=True, color='FFFFFF')
+        ws4.cell(row=row_num, column=col).border = Border(
+            left=Side(style='thin'), right=Side(style='thin'),
+            top=Side(style='thin'), bottom=Side(style='thin'))
+
+    ws4.column_dimensions['A'].width = 25
+    ws4.column_dimensions['B'].width = 12
+    ws4.column_dimensions['C'].width = 20
+    ws4.column_dimensions['D'].width = 12
+    ws4.column_dimensions['E'].width = 25
+
+    conn.close()
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return send_file(output, download_name=f'NhapHang_{month}.xlsx', as_attachment=True)
+
+
+# ==================== QUAN LY NCC & NGUYEN LIEU ====================
+
+@app.route('/import/suppliers')
+@login_required
+def suppliers_page():
+    conn = get_db()
+    c = conn.cursor()
+    c.execute('SELECT * FROM suppliers ORDER BY name')
+    suppliers_list = c.fetchall()
+    conn.close()
+    return render_template('suppliers.html', suppliers=suppliers_list)
+
+
+@app.route('/import/suppliers/add', methods=['POST'])
+@login_required
+def suppliers_add():
+    name = request.form.get('name', '').strip()
+    phone = request.form.get('phone', '').strip()
+    address = request.form.get('address', '').strip()
+    notes = request.form.get('notes', '').strip()
+
+    if not name:
+        flash('Vui long nhap ten NCC!', 'danger')
+        return redirect(url_for('suppliers_page'))
+
+    conn = get_db()
+    c = conn.cursor()
+    c.execute('INSERT INTO suppliers (name, phone, address, notes) VALUES (?,?,?,?)',
+              (name, phone, address, notes))
+    conn.commit()
+    conn.close()
+    flash(f'Them NCC "{name}" thanh cong!', 'success')
+    return redirect(url_for('suppliers_page'))
+
+
+@app.route('/import/suppliers/delete/<int:supplier_id>', methods=['POST'])
+@login_required
+def suppliers_delete(supplier_id):
+    conn = get_db()
+    c = conn.cursor()
+    c.execute('DELETE FROM suppliers WHERE id = ?', (supplier_id,))
+    conn.commit()
+    conn.close()
+    flash('Xoa NCC thanh cong!', 'success')
+    return redirect(url_for('suppliers_page'))
+
+
+@app.route('/import/materials')
+@login_required
+def materials_page():
+    conn = get_db()
+    c = conn.cursor()
+    c.execute('''SELECT m.*, g.name as group_name, g.color as group_color
+        FROM materials m LEFT JOIN material_groups g ON m.group_id = g.id
+        ORDER BY g.sort_order, g.name, m.name''')
+    materials_list = c.fetchall()
+    c.execute('SELECT * FROM material_groups ORDER BY sort_order, name')
+    groups = c.fetchall()
+    conn.close()
+    return render_template('materials.html', materials=materials_list, groups=groups)
+
+
+@app.route('/import/materials/add', methods=['POST'])
+@login_required
+def materials_add():
+    name = request.form.get('name', '').strip()
+    unit = request.form.get('unit', '').strip()
+    group_id = request.form.get('group_id', '')
+
+    if not name:
+        flash('Vui long nhap ten nguyen lieu!', 'danger')
+        return redirect(url_for('materials_page'))
+
+    conn = get_db()
+    c = conn.cursor()
+    c.execute('INSERT INTO materials (name, unit, group_id) VALUES (?,?,?)',
+              (name, unit, group_id or None))
+    conn.commit()
+    conn.close()
+    flash(f'Them nguyen lieu "{name}" thanh cong!', 'success')
+    return redirect(url_for('materials_page'))
+
+
+@app.route('/import/materials/delete/<int:material_id>', methods=['POST'])
+@login_required
+def materials_delete(material_id):
+    conn = get_db()
+    c = conn.cursor()
+    c.execute('DELETE FROM materials WHERE id = ?', (material_id,))
+    conn.commit()
+    conn.close()
+    flash('Xoa nguyen lieu thanh cong!', 'success')
+    return redirect(url_for('materials_page'))
+
+
+# ==================== QUAN LY NHOM HANG ====================
+
+@app.route('/import/groups')
+@login_required
+def groups_page():
+    conn = get_db()
+    c = conn.cursor()
+    c.execute('SELECT * FROM material_groups ORDER BY sort_order, name')
+    groups = c.fetchall()
+    # Dem so nguyen lieu trong tung nhom
+    group_counts = {}
+    c.execute('SELECT group_id, COUNT(*) as cnt FROM materials GROUP BY group_id')
+    for row in c.fetchall():
+        group_counts[row['group_id'] or 0] = row['cnt']
+    conn.close()
+    return render_template('groups.html', groups=groups, group_counts=group_counts)
+
+
+@app.route('/import/groups/add', methods=['POST'])
+@login_required
+def groups_add():
+    name = request.form.get('name', '').strip()
+    color = request.form.get('color', '#0078D4').strip()
+    sort_order = int(request.form.get('sort_order', 0) or 0)
+
+    if not name:
+        flash('Vui long nhap ten nhom!', 'danger')
+        return redirect(url_for('groups_page'))
+
+    conn = get_db()
+    c = conn.cursor()
+    c.execute('INSERT INTO material_groups (name, color, sort_order) VALUES (?,?,?)',
+              (name, color, sort_order))
+    conn.commit()
+    conn.close()
+    flash(f'Them nhom "{name}" thanh cong!', 'success')
+    return redirect(url_for('groups_page'))
+
+
+@app.route('/import/groups/delete/<int:group_id>', methods=['POST'])
+@login_required
+def groups_delete(group_id):
+    conn = get_db()
+    c = conn.cursor()
+    # Chuyen nguyen lieu ve khong nhom
+    c.execute('UPDATE materials SET group_id = NULL WHERE group_id = ?', (group_id,))
+    c.execute('DELETE FROM material_groups WHERE id = ?', (group_id,))
+    conn.commit()
+    conn.close()
+    flash('Xoa nhom thanh cong!', 'success')
+    return redirect(url_for('groups_page'))
+
+
+# ==================== CHI TIET NCC ====================
+
+@app.route('/import/supplier/<int:supplier_id>')
+@login_required
+def supplier_detail(supplier_id):
+    conn = get_db()
+    c = conn.cursor()
+    c.execute('SELECT * FROM suppliers WHERE id = ?', (supplier_id,))
+    supplier = c.fetchone()
+    if not supplier:
+        flash('Khong tim thay NCC!', 'danger')
+        return redirect(url_for('import_page'))
+
+    # Lay tat ca phieu nhap cua NCC
+    c.execute('''SELECT i.date, m.name as material_name, m.unit, i.quantity,
+        i.unit_price, i.total_price, i.notes, i.id
+        FROM imports i
+        LEFT JOIN materials m ON i.material_id = m.id
+        WHERE i.supplier_id = ?
+        ORDER BY i.date DESC, i.id DESC''',
+        (supplier_id,))
+    imports = c.fetchall()
+
+    total_debt = sum(float(i['total_price'] or 0) for i in imports)
+
+    # Theo thang
+    monthly = {}
+    for imp in imports:
+        m = imp['date'][:7]
+        if m not in monthly:
+            monthly[m] = 0
+        monthly[m] += float(imp['total_price'] or 0)
+
+    conn.close()
+    return render_template('supplier_detail.html',
+        supplier=supplier, imports=imports,
+        total_debt=total_debt, monthly=monthly)
+
+
+# ==================== CHI TIET NHOM HANG ====================
+
+@app.route('/import/group/<int:group_id>')
+@login_required
+def group_detail(group_id):
+    if group_id == 0:
+        # Hien thi tat ca nguyen lieu khong co nhom
+        group_name = 'Khong co nhom'
+        group_color = '#6c757d'
+    else:
+        conn = get_db()
+        c = conn.cursor()
+        c.execute('SELECT * FROM material_groups WHERE id = ?', (group_id,))
+        group = c.fetchone()
+        if not group:
+            flash('Khong tim thay nhom!', 'danger')
+            return redirect(url_for('import_page'))
+        group_name = group['name']
+        group_color = group['color']
+        conn.close()
+
+    conn = get_db()
+    c = conn.cursor()
+    if group_id == 0:
+        c.execute('''SELECT m.*, g.name as group_name, g.color as group_color
+            FROM materials m LEFT JOIN material_groups g ON m.group_id = g.id
+            WHERE m.group_id IS NULL ORDER BY m.name''')
+    else:
+        c.execute('''SELECT m.*, g.name as group_name, g.color as group_color
+            FROM materials m LEFT JOIN material_groups g ON m.group_id = g.id
+            WHERE m.group_id = ? ORDER BY m.name''',
+            (group_id,))
+    materials_list = c.fetchall()
+
+    # Lay phieu nhap cho tung nguyen lieu trong nhom
+    material_ids = [str(m['id']) for m in materials_list]
+    material_imports = {}
+    for mat in materials_list:
+        material_imports[mat['id']] = []
+
+    if material_ids:
+        placeholders = ','.join(['?' for _ in material_ids])
+        c.execute(f'''SELECT i.date, m.name as material_name, s.name as supplier_name,
+            i.quantity, i.unit_price, i.total_price, i.material_id, i.id
+            FROM imports i
+            LEFT JOIN materials m ON i.material_id = m.id
+            LEFT JOIN suppliers s ON i.supplier_id = s.id
+            WHERE i.material_id IN ({placeholders})
+            ORDER BY i.date DESC, i.id DESC''',
+            material_ids)
+        for row in c.fetchall():
+            mid = row['material_id']
+            if mid in material_imports:
+                material_imports[mid].append(row)
+
+    total_all = 0
+    mat_totals = {}  # luu tong tien moi nguyen lieu
+    for mat in materials_list:
+        mat_total = sum(float(r['total_price'] or 0) for r in material_imports.get(mat['id'], []))
+        mat_totals[mat['id']] = mat_total
+        total_all += mat_total
+
+    conn.close()
+    return render_template('group_detail.html',
+        group_id=group_id, group_name=group_name, group_color=group_color or '#6c757d',
+        materials_list=materials_list, material_imports=material_imports,
+        total_all=total_all, mat_totals=mat_totals)
+
+
+# ==================== CHI TIET NGUYEN LIEU ====================
+
+@app.route('/import/material/<int:material_id>')
+@login_required
+def material_detail(material_id):
+    conn = get_db()
+    c = conn.cursor()
+    c.execute('''SELECT m.*, g.name as group_name, g.color as group_color
+        FROM materials m LEFT JOIN material_groups g ON m.group_id = g.id
+        WHERE m.id = ?''', (material_id,))
+    material = c.fetchone()
+    if not material:
+        flash('Khong tim thay nguyen lieu!', 'danger')
+        return redirect(url_for('materials_page'))
+
+    # Lay phieu nhap
+    c.execute('''SELECT i.date, s.name as supplier_name, i.quantity,
+        i.unit_price, i.total_price, i.notes, i.id
+        FROM imports i
+        LEFT JOIN suppliers s ON i.supplier_id = s.id
+        WHERE i.material_id = ?
+        ORDER BY i.date DESC, i.id DESC''',
+        (material_id,))
+    imports = c.fetchall()
+
+    total_import = sum(float(i['total_price'] or 0) for i in imports)
+
+    # Theo thang
+    monthly = {}
+    for imp in imports:
+        m = imp['date'][:7]
+        if m not in monthly:
+            monthly[m] = {'qty': 0, 'amount': 0}
+        monthly[m]['qty'] += float(imp['quantity'] or 0)
+        monthly[m]['amount'] += float(imp['total_price'] or 0)
+
+    conn.close()
+    return render_template('material_detail.html',
+        material=material, imports=imports,
+        total_import=total_import, monthly=monthly)
+
 
 # ============================================================
 # ERROR HANDLERS
