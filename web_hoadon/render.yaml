@@ -1,10 +1,9 @@
-name: hoadon-manager
-description: Web app quản lý hóa đơn
-repository: https://github.com/nghianh4975-cpu/hoadon-manager
-regions:
-  - singapore
-buildCommand: pip install -r requirements.txt
-startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2
-envVars:
-  - key: PYTHON_VERSION
-    value: 3.11.0
+services:
+  - type: web
+    name: hoadon-manager
+    env: python
+    pythonVersion: "3.11.0"
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2
+    repo: https://github.com/nghianh4975-cpu/hoadon-manager
+    region: singapore
