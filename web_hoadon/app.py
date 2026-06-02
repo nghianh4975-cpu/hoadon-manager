@@ -145,6 +145,7 @@ def get_db():
     if USE_PG:
         import psycopg2
         conn = psycopg2.connect(os.environ['DATABASE_URL'])
+        conn.autocommit = True  # DDL can fail without aborting transaction
     else:
         conn = sqlite3.connect(DATABASE)
         conn.row_factory = sqlite3.Row
