@@ -2145,7 +2145,7 @@ def import_delete(import_id):
         conn.commit()
         flash('Xoa phieu nhap thanh cong!', 'success')
     conn.close()
-    return redirect(url_for('import_page', month=request.args.get('month', '')))
+    return redirect(url_for('import_page', month=month or datetime.date.today().strftime('%Y-%m')))
 
 
 # Nhap hang tu text (batch import - giong import_text nhung cho nhap)
@@ -2188,9 +2188,9 @@ def import_batch():
                     if (mat['group_id'] is None or mat['group_id'] == '') and effective_group_id:
                         c.execute('UPDATE materials SET group_id=? WHERE id=?', (effective_group_id, material_id))
                     # Cap nhat don vi neu khac rong
-                    if unit:
-                        c.execute('UPDATE materials SET unit=? WHERE id=? AND (unit IS NULL OR unit="")',
-                                  (unit, material_id))
+                    if unit and unit.strip():
+                        c.execute("UPDATE materials SET unit=%s WHERE id=%s AND (unit IS NULL OR unit=%s)",
+                                  (unit, material_id, ''))
                 else:
                     if USE_PG:
                         c.execute('INSERT INTO materials (name, group_id, unit) VALUES (%s,%s,%s) RETURNING id',
