@@ -65,7 +65,7 @@
                                     <span class="text-muted">-</span>
                                     {% endif %}
                                 </td>
-                                <td>
+                                <td onclick="event.stopPropagation()">
                                     <form method="POST" action="{{ url_for('materials_delete', material_id=mat.id) }}"
                                           onsubmit="return confirm('Xoa nguyen lieu nay?')">
                                         <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
