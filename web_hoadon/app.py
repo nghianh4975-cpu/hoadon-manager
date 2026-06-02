@@ -244,9 +244,14 @@ def init_db():
             unit_price REAL DEFAULT 0,
             total_price REAL DEFAULT 0,
             notes TEXT,
-            created_by VARCHAR(255),
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_by TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            paid_amount REAL DEFAULT 0
         )''')
+        try:
+            c.execute('ALTER TABLE imports ADD COLUMN paid_amount REAL DEFAULT 0')
+        except Exception:
+            pass
         c.execute('''CREATE TABLE IF NOT EXISTS inventory (
             id SERIAL PRIMARY KEY,
             month VARCHAR(7) NOT NULL,
@@ -337,8 +342,13 @@ def init_db():
             total_price REAL DEFAULT 0,
             notes TEXT,
             created_by TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            paid_amount REAL DEFAULT 0
         )''')
+        try:
+            c.execute('ALTER TABLE imports ADD COLUMN paid_amount REAL DEFAULT 0')
+        except Exception:
+            pass
         c.execute('''CREATE TABLE IF NOT EXISTS inventory (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             month TEXT NOT NULL,
@@ -1797,13 +1807,20 @@ def import_page():
     # Tong hop nhap theo NCC trong thang
     ncc_summary = []
     for sup in suppliers:
-        c.execute('''SELECT COALESCE(SUM(i.total_price), 0) as total_debt
+        c.execute('''SELECT COALESCE(SUM(i.total_price), 0) as total_debt,
+            COALESCE(SUM(i.paid_amount), 0) as total_paid
             FROM imports i WHERE i.supplier_id = ? AND i.date LIKE ?''',
             (sup['id'], f'{month}%'))
         row = c.fetchone()
         total_debt = float(row[0]) if row and row[0] else 0
+        total_paid = float(row[1]) if row and row[1] else 0
         if total_debt > 0:
-            ncc_summary.append({'id': sup['id'], 'name': sup['name'], 'total_debt': total_debt})
+            ncc_summary.append({
+                'id': sup['id'], 'name': sup['name'],
+                'total_debt': total_debt,
+                'total_paid': total_paid,
+                'remaining': total_debt - total_paid
+            })
 
     # Tong hop theo nhom hang trong thang - luon hien thi tat ca nhom
     group_summary = []
@@ -1833,8 +1850,9 @@ def import_page():
     })
 
     # Lay tat ca import trong thang
-    c.execute('''SELECT i.date, s.name as supplier_name, m.name as material_name,
-        m.unit, i.quantity, i.unit_price, i.total_price, i.id
+    c.execute('''SELECT i.id, i.date, s.name as supplier_name, s.id as supplier_id,
+        m.name as material_name, m.id as material_id,
+        m.unit, i.quantity, i.unit_price, i.total_price, i.paid_amount
         FROM imports i
         LEFT JOIN suppliers s ON i.supplier_id = s.id
         LEFT JOIN materials m ON i.material_id = m.id
@@ -2148,6 +2166,61 @@ def import_delete(import_id):
     return redirect(url_for('import_page', month=month or datetime.date.today().strftime('%Y-%m')))
 
 
+# Xoa nhieu phieu nhap cung luc (xoa hang loat)
+@app.route('/import/delete-batch', methods=['POST'])
+@login_required
+def import_delete_batch():
+    ids = request.form.getlist('delete_ids')
+    month = request.form.get('month', datetime.date.today().strftime('%Y-%m'))
+
+    if not ids:
+        flash('Chua chon phieu nao de xoa!', 'warning')
+        return redirect(url_for('import_page', month=month))
+
+    conn = get_db()
+    c = conn.cursor()
+
+    for import_id in ids:
+        c.execute('SELECT date, material_id, quantity FROM imports WHERE id = ?', (int(import_id),))
+        imp = c.fetchone()
+        if imp:
+            imp_month = imp['date'][:7]
+            material_id = imp['material_id']
+
+            c.execute('''SELECT id, opening_stock, import_qty, closing_stock FROM inventory
+                WHERE month = ? AND material_id = ?''',
+                (imp_month, material_id))
+            inv = c.fetchone()
+            if inv:
+                new_import_qty = max(0, float(inv['import_qty'] or 0) - float(imp['quantity'] or 0))
+                new_closing = float(inv['opening_stock'] or 0) + new_import_qty
+                c.execute('''UPDATE inventory SET import_qty=?, closing_stock=?,
+                    updated_at=CURRENT_TIMESTAMP WHERE id=?''',
+                    (new_import_qty, new_closing, inv['id']))
+
+            c.execute('DELETE FROM imports WHERE id = ?', (int(import_id),))
+
+    conn.commit()
+    conn.close()
+    flash(f'Da xoa {len(ids)} phieu nhap!', 'success')
+    return redirect(url_for('import_page', month=month))
+
+
+# Cap nhat so tien da thanh toan cho 1 phieu nhap
+@app.route('/import/payment/<int:import_id>', methods=['POST'])
+@login_required
+def import_update_payment(import_id):
+    paid = float(request.form.get('paid_amount', 0) or 0)
+    month = request.form.get('month', datetime.date.today().strftime('%Y-%m'))
+    conn = get_db()
+    c = conn.cursor()
+    c.execute('UPDATE imports SET paid_amount = ? WHERE id = ?', (paid, import_id))
+    conn.commit()
+    conn.close()
+    flash('Cap nhat thanh toan thanh cong!', 'success')
+    return redirect(url_for('import_page', month=month))
+
+
 # Nhap hang tu text (batch import - giong import_text nhung cho nhap)
 @app.route('/import/batch', methods=['GET', 'POST'])
 @login_required
@@ -2305,7 +2378,8 @@ def export_import():
     # Lay du lieu import (co nhom hang)
     c.execute('''SELECT i.date, s.name as supplier_name, m.name as material_name,
         g.name as group_name, g.color as group_color,
-        m.unit, i.quantity, i.unit_price, i.total_price
+        m.unit, i.quantity, i.unit_price, i.total_price,
+        COALESCE(i.paid_amount, 0) as paid_amount
         FROM imports i
         LEFT JOIN suppliers s ON i.supplier_id = s.id
         LEFT JOIN materials m ON i.material_id = m.id
@@ -2316,7 +2390,8 @@ def export_import():
 
     # Lay du lieu NCC
     c.execute('''SELECT s.name,
-        COALESCE(SUM(i.total_price), 0) as total_debt
+        COALESCE(SUM(i.total_price), 0) as total_debt,
+        COALESCE(SUM(i.paid_amount), 0) as total_paid
         FROM imports i
         LEFT JOIN suppliers s ON i.supplier_id = s.id
         WHERE i.date LIKE ? AND s.id IS NOT NULL
@@ -2354,10 +2429,10 @@ def export_import():
     ws['A1'].font = Font(bold=True, size=16, color='FFFFFF')
     ws['A1'].fill = PatternFill(start_color='0078D4', end_color='0078D4', fill_type='solid')
     ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
-    ws.merge_cells('A1:H1')
+    ws.merge_cells('A1:J1')
     ws.row_dimensions[1].height = 35
 
-    headers = ['Ngay', 'Nha Cung Cap', 'Ten Nguyen Lieu', 'Nhom Hang', 'Don Vi', 'So Luong', 'Don Gia', 'Thanh Tien']
+    headers = ['Ngay', 'Nha Cung Cap', 'Ten Nguyen Lieu', 'Nhom Hang', 'Don Vi', 'So Luong', 'Don Gia', 'Thanh Tien', 'Da Thanh Toan', 'Con Lai']
     for i, h in enumerate(headers, 1):
         cell = ws.cell(row=2, column=i, value=h)
         cell.font = Font(bold=True, color='FFFFFF')
@@ -2368,36 +2443,50 @@ def export_import():
 
     row_num = 3
     grand_total = 0
+    total_paid = 0
     for imp in imports_list:
+        paid = float(imp[9]) if len(imp) > 9 and imp[9] else 0
+        remaining = float(imp[8] or 0) - paid
+        grand_total += float(imp[8] or 0)
+        total_paid += paid
         ws.cell(row=row_num, column=1, value=imp[0])
         ws.cell(row=row_num, column=2, value=imp[1] or '')
         ws.cell(row=row_num, column=3, value=imp[2] or '')
         ws.cell(row=row_num, column=4, value=imp[3] or '')
         ws.cell(row=row_num, column=5, value=imp[5] or '')
         ws.cell(row=row_num, column=6, value=float(imp[6] or 0))
-        ws.cell(row=row_num, column=6).number_format = '#,##0.##'
+        ws.cell(row=row_num, column=6).number_format = '#,##0.00'
         ws.cell(row=row_num, column=7, value=float(imp[7] or 0))
         ws.cell(row=row_num, column=7).number_format = '#,##0'
         ws.cell(row=row_num, column=8, value=float(imp[8] or 0))
         ws.cell(row=row_num, column=8).number_format = '#,##0'
-        for col in range(1, 9):
+        ws.cell(row=row_num, column=9, value=paid)
+        ws.cell(row=row_num, column=9).number_format = '#,##0'
+        ws.cell(row=row_num, column=10, value=remaining)
+        ws.cell(row=row_num, column=10).number_format = '#,##0'
+        for col in range(1, 11):
             ws.cell(row=row_num, column=col).border = Border(
                 left=Side(style='thin'), right=Side(style='thin'),
                 top=Side(style='thin'), bottom=Side(style='thin'))
-        grand_total += float(imp[8] or 0)
         row_num += 1
 
     # Tong cong
     ws.cell(row=row_num, column=1, value='TONG CONG').font = Font(bold=True, color='FFFFFF')
-    ws.cell(row=row_num, column=8, value=grand_total)
-    ws.cell(row=row_num, column=8).number_format = '#,##0'
-    ws.cell(row=row_num, column=8).font = Font(bold=True, color='FFFFFF')
-    for col in range(1, 9):
+    for col in range(1, 11):
         ws.cell(row=row_num, column=col).fill = PatternFill(
             start_color='0078D4', end_color='0078D4', fill_type='solid')
         ws.cell(row=row_num, column=col).border = Border(
             left=Side(style='thin'), right=Side(style='thin'),
             top=Side(style='thin'), bottom=Side(style='thin'))
+    ws.cell(row=row_num, column=8, value=grand_total)
+    ws.cell(row=row_num, column=8).number_format = '#,##0'
+    ws.cell(row=row_num, column=8).font = Font(bold=True, color='FFFFFF')
+    ws.cell(row=row_num, column=9, value=total_paid)
+    ws.cell(row=row_num, column=9).number_format = '#,##0'
+    ws.cell(row=row_num, column=9).font = Font(bold=True, color='FFFFFF')
+    ws.cell(row=row_num, column=10, value=grand_total - total_paid)
+    ws.cell(row=row_num, column=10).number_format = '#,##0'
+    ws.cell(row=row_num, column=10).font = Font(bold=True, color='FFFFFF')
 
     ws.column_dimensions['A'].width = 14
     ws.column_dimensions['B'].width = 25
@@ -2407,6 +2496,8 @@ def export_import():
     ws.column_dimensions['F'].width = 14
     ws.column_dimensions['G'].width = 16
     ws.column_dimensions['H'].width = 18
+    ws.column_dimensions['I'].width = 18
+    ws.column_dimensions['J'].width = 18
 
     # ==================== SHEET 2: TONG HOP NCC ====================
     ws2 = wb.create_sheet("2-Tong Hop NCC")
@@ -2415,10 +2506,10 @@ def export_import():
     ws2['A1'].font = Font(bold=True, size=16, color='FFFFFF')
     ws2['A1'].fill = PatternFill(start_color='107C10', end_color='107C10', fill_type='solid')
     ws2['A1'].alignment = Alignment(horizontal='center', vertical='center')
-    ws2.merge_cells('A1:C1')
+    ws2.merge_cells('A1:E1')
     ws2.row_dimensions[1].height = 35
 
-    for i, h in enumerate(['Nha Cung Cap', 'Tong Cong No', 'Ghi Chu'], 1):
+    for i, h in enumerate(['Nha Cung Cap', 'Tong No', 'Da Thanh Toan', 'Con Lai', 'Ghi Chu'], 1):
         cell = ws2.cell(row=2, column=i, value=h)
         cell.font = Font(bold=True, color='FFFFFF')
         cell.fill = PatternFill(start_color='107C10', end_color='107C10', fill_type='solid')
@@ -2427,20 +2518,53 @@ def export_import():
                             top=Side(style='thin'), bottom=Side(style='thin'))
 
     row_num = 3
+    total_no = 0
+    total_paid = 0
+    total_remaining = 0
     for ncc in ncc_rows:
+        debt = float(ncc[1])
+        paid = float(ncc[2]) if ncc[2] else 0
+        remaining = debt - paid
+        total_no += debt
+        total_paid += paid
+        total_remaining += remaining
         ws2.cell(row=row_num, column=1, value=ncc[0])
-        ws2.cell(row=row_num, column=2, value=float(ncc[1]))
+        ws2.cell(row=row_num, column=2, value=debt)
         ws2.cell(row=row_num, column=2).number_format = '#,##0'
-        ws2.cell(row=row_num, column=3, value=f'Tong nhap thang {month}')
-        for col in range(1, 4):
+        ws2.cell(row=row_num, column=3, value=paid)
+        ws2.cell(row=row_num, column=3).number_format = '#,##0'
+        ws2.cell(row=row_num, column=4, value=remaining)
+        ws2.cell(row=row_num, column=4).number_format = '#,##0'
+        ws2.cell(row=row_num, column=5, value=f'Tong nhap thang {month}')
+        for col in range(1, 6):
             ws2.cell(row=row_num, column=col).border = Border(
                 left=Side(style='thin'), right=Side(style='thin'),
                 top=Side(style='thin'), bottom=Side(style='thin'))
         row_num += 1
 
+    # Tong cong
+    ws2.cell(row=row_num, column=1, value='TONG CONG').font = Font(bold=True, color='FFFFFF')
+    ws2.cell(row=row_num, column=1).fill = PatternFill(start_color='107C10', end_color='107C10', fill_type='solid')
+    ws2.cell(row=row_num, column=2, value=total_no)
+    ws2.cell(row=row_num, column=2).number_format = '#,##0'
+    ws2.cell(row=row_num, column=2).font = Font(bold=True, color='FFFFFF')
+    ws2.cell(row=row_num, column=3, value=total_paid)
+    ws2.cell(row=row_num, column=3).number_format = '#,##0'
+    ws2.cell(row=row_num, column=3).font = Font(bold=True, color='FFFFFF')
+    ws2.cell(row=row_num, column=4, value=total_remaining)
+    ws2.cell(row=row_num, column=4).number_format = '#,##0'
+    ws2.cell(row=row_num, column=4).font = Font(bold=True, color='FFFFFF')
+    for col in range(1, 6):
+        ws2.cell(row=row_num, column=col).fill = PatternFill(start_color='107C10', end_color='107C10', fill_type='solid')
+        ws2.cell(row=row_num, column=col).border = Border(
+            left=Side(style='thin'), right=Side(style='thin'),
+            top=Side(style='thin'), bottom=Side(style='thin'))
+
     ws2.column_dimensions['A'].width = 30
-    ws2.column_dimensions['B'].width = 20
-    ws2.column_dimensions['C'].width = 25
+    ws2.column_dimensions['B'].width = 18
+    ws2.column_dimensions['C'].width = 18
+    ws2.column_dimensions['D'].width = 18
+    ws2.column_dimensions['E'].width = 25
 
     # ==================== SHEET 3: TON KHO ====================
     ws3 = wb.create_sheet("3-Ton Kho")
@@ -2466,14 +2590,14 @@ def export_import():
         ws3.cell(row=row_num, column=1, value=inv[0] or '')
         ws3.cell(row=row_num, column=2, value=inv[1] or '')
         ws3.cell(row=row_num, column=3, value=float(inv[2] or 0))
-        ws3.cell(row=row_num, column=3).number_format = '#,##0.##'
+        ws3.cell(row=row_num, column=3).number_format = '#,##0.00'
         ws3.cell(row=row_num, column=4, value=float(inv[3] or 0))
-        ws3.cell(row=row_num, column=4).number_format = '#,##0.##'
+        ws3.cell(row=row_num, column=4).number_format = '#,##0.00'
         export_val = float(inv[2] or 0) + float(inv[3] or 0) - float(inv[4] or 0)
         ws3.cell(row=row_num, column=5, value=export_val if float(inv[4] or 0) > 0 else 0)
-        ws3.cell(row=row_num, column=5).number_format = '#,##0.##'
+        ws3.cell(row=row_num, column=5).number_format = '#,##0.00'
         ws3.cell(row=row_num, column=6, value=float(inv[4] or 0))
-        ws3.cell(row=row_num, column=6).number_format = '#,##0.##'
+        ws3.cell(row=row_num, column=6).number_format = '#,##0.00'
         for col in range(1, 7):
             ws3.cell(row=row_num, column=col).border = Border(
                 left=Side(style='thin'), right=Side(style='thin'),
@@ -2716,7 +2840,7 @@ def supplier_detail(supplier_id):
 
     # Lay tat ca phieu nhap cua NCC
     c.execute('''SELECT i.date, m.name as material_name, m.unit, i.quantity,
-        i.unit_price, i.total_price, i.notes, i.id
+        i.unit_price, i.total_price, i.notes, i.id, COALESCE(i.paid_amount, 0) as paid_amount
         FROM imports i
         LEFT JOIN materials m ON i.material_id = m.id
         WHERE i.supplier_id = ?
@@ -2725,19 +2849,21 @@ def supplier_detail(supplier_id):
     imports = c.fetchall()
 
     total_debt = sum(float(i['total_price'] or 0) for i in imports)
+    total_paid = sum(float(i['paid_amount'] or 0) for i in imports)
 
     # Theo thang
     monthly = {}
     for imp in imports:
         m = imp['date'][:7]
         if m not in monthly:
-            monthly[m] = 0
-        monthly[m] += float(imp['total_price'] or 0)
+            monthly[m] = {'debt': 0, 'paid': 0}
+        monthly[m]['debt'] += float(imp['total_price'] or 0)
+        monthly[m]['paid'] += float(imp['paid_amount'] or 0)
 
     conn.close()
     return render_template('supplier_detail.html',
         supplier=supplier, imports=imports,
-        total_debt=total_debt, monthly=monthly)
+        total_debt=total_debt, total_paid=total_paid, monthly=monthly)
 
 
 # ==================== CHI TIET NHOM HANG ====================

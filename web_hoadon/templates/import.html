@@ -39,7 +39,7 @@
 {# ---- Bang 1: TONG HOP NCC ---- #}
 <div class="row">
     <div class="col-md-5">
-        <div class="card ncc-card mb-3">
+        <div class="card mb-3">
             <div class="card-header bg-white d-flex justify-content-between align-items-center">
                 <h5 class="mb-0"><i class="bi bi-building text-success"></i> Tong Hop Cong No NCC</h5>
                 <a href="{{ url_for('suppliers_page') }}" class="btn btn-sm btn-outline-success"><i class="bi bi-plus-circle"></i> Them NCC</a>
@@ -51,7 +51,10 @@
                         <thead>
                             <tr>
                                 <th>Nha Cung Cap</th>
-                                <th class="text-end">Tong Cong No</th>
+                                <th class="text-end">Tong No</th>
+                                <th class="text-end">Da Thanh Toan</th>
+                                <th class="text-end">Con Lai</th>
+                                <th></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -61,7 +64,16 @@
                                     <i class="bi bi-chevron-right text-success"></i>
                                     <strong>{{ ncc.name }}</strong>
                                 </td>
-                                <td class="text-end"><span class="text-danger fw-bold">{{ "{:,.0f}".format(ncc.total_debt) }} VND</span></td>
+                                <td class="text-end"><span class="text-dark">{{ "{:,.0f}".format(ncc.total_debt) }} VND</span></td>
+                                <td class="text-end"><span class="text-success">{{ "{:,.0f}".format(ncc.total_paid) }} VND</span></td>
+                                <td class="text-end">
+                                    {% if ncc.remaining > 0 %}
+                                    <span class="text-danger fw-bold">{{ "{:,.0f}".format(ncc.remaining) }} VND</span>
+                                    {% else %}
+                                    <span class="text-success">Da tra het</span>
+                                    {% endif %}
+                                </td>
+                                <td><a href="{{ url_for('supplier_detail', supplier_id=ncc.id) }}" class="btn btn-sm btn-outline-success" onclick="event.stopPropagation()"><i class="bi bi-eye"></i></a></td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -69,10 +81,21 @@
                             <tr class="table-success">
                                 <td><strong>TONG CONG NO NCC</strong></td>
                                 <td class="text-end">
-                                    <strong class="text-danger">
+                                    <strong class="text-dark">
                                         {{ "{:,.0f}".format(ncc_summary|sum(attribute='total_debt')) }} VND
                                     </strong>
                                 </td>
+                                <td class="text-end">
+                                    <strong class="text-success">
+                                        {{ "{:,.0f}".format(ncc_summary|sum(attribute='total_paid')) }} VND
+                                    </strong>
+                                </td>
+                                <td class="text-end">
+                                    <strong class="text-danger">
+                                        {{ "{:,.0f}".format(ncc_summary|sum(attribute='remaining')) }} VND
+                                    </strong>
+                                </td>
+                                <td></td>
                             </tr>
                         </tfoot>
                     </table>
@@ -132,6 +155,9 @@
 <div class="card import-detail-card">
     <div class="card-header bg-white d-flex justify-content-between align-items-center">
         <h5 class="mb-0"><i class="bi bi-list-ol text-primary"></i> Chi Tiet Nhap Hang</h5>
+        <button type="button" class="btn btn-sm btn-outline-primary" onclick="toggleAllChecks()">
+            <i class="bi bi-check2-square"></i> Chon Tat Ca
+        </button>
     </div>
     <div class="card-body p-0">
         {# Form them phieu nhap #}
@@ -170,10 +196,13 @@
         </form>
 
         {% if imports_list %}
+        <form method="POST" action="{{ url_for('import_delete_batch') }}" id="batchDeleteForm">
+        <input type="hidden" name="month" value="{{ month }}">
         <div class="table-responsive">
             <table class="table table-sm table-hover mb-0">
                 <thead>
                     <tr>
+                        <th style="width:40px"><input type="checkbox" id="checkAll" onchange="toggleAllChecks()"></th>
                         <th>Ngay</th>
                         <th>NCC</th>
                         <th>Nguyen Lieu</th>
@@ -181,12 +210,15 @@
                         <th class="text-end">So Luong</th>
                         <th class="text-end">Don Gia</th>
                         <th class="text-end">Thanh Tien</th>
+                        <th class="text-end">Da Thanh Toan</th>
+                        <th class="text-end">Con Lai</th>
                         <th></th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for imp in imports_list %}
                     <tr>
+                        <td><input type="checkbox" class="row-check" name="delete_ids" value="{{ imp.id }}" onchange="updateSelectedCount()"></td>
                         <td>{{ imp.date }}</td>
                         <td>
                             {% if imp.supplier_id %}
@@ -210,21 +242,54 @@
                         <td class="text-end">{{ "{:,.2f}".format(imp.quantity) }}</td>
                         <td class="text-end">{{ "{:,.0f}".format(imp.unit_price) }}</td>
                         <td class="text-end text-danger fw-bold">{{ "{:,.0f}".format(imp.total_price) }}</td>
+                        <td class="text-end">
+                            {% set imp_paid = imp.paid_amount if imp.paid_amount else 0 %}
+                            <span class="text-success">{{ "{:,.0f}".format(imp_paid) }}</span>
+                        </td>
+                        <td class="text-end">
+                            {% set imp_remaining = (imp.total_price or 0) - (imp.paid_amount or 0) %}
+                            {% if imp_remaining > 0 %}
+                            <span class="text-danger fw-bold">{{ "{:,.0f}".format(imp_remaining) }}</span>
+                            {% else %}
+                            <span class="text-success">OK</span>
+                            {% endif %}
+                        </td>
                         <td>
-                            <form method="POST" action="{{ url_for('import_delete', import_id=imp.id) }}" onsubmit="return confirm('Xoa phieu nhap nay?')">
-                                <input type="hidden" name="month" value="{{ month }}">
-                                <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
-                            </form>
+                            <div class="d-flex gap-1">
+                                <form method="POST" action="{{ url_for('import_update_payment', import_id=imp.id) }}" class="d-flex gap-1 align-items-center" onsubmit="return confirm('Cap nhat thanh toan?')">
+                                    <input type="hidden" name="month" value="{{ month }}">
+                                    <input type="number" step="1000" class="form-control form-control-sm" name="paid_amount"
+                                        value="{{ "{:,.0f}".format(imp_paid) }}" placeholder="TT" style="width:100px"
+                                        title="Nhap so tien da thanh toan">
+                                    <button type="submit" class="btn btn-sm btn-outline-success" title="Luu thanh toan">
+                                        <i class="bi bi-check"></i>
+                                    </button>
+                                </form>
+                                <form method="POST" action="{{ url_for('import_delete', import_id=imp.id) }}" onsubmit="return confirm('Xoa phieu nhap nay?')">
+                                    <input type="hidden" name="month" value="{{ month }}">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                                </form>
+                            </div>
                         </td>
                     </tr>
                     {% endfor %}
                 </tbody>
                 <tfoot>
                     <tr class="table-primary">
-                        <td colspan="6" class="text-end"><strong>TONG CONG NHAP HANG:</strong></td>
+                        <td colspan="7" class="text-end"><strong>TONG CONG NHAP HANG:</strong></td>
                         <td class="text-end">
                             <strong class="text-danger">
                                 {{ "{:,.0f}".format(imports_list|sum(attribute='total_price')) }} VND
+                            </strong>
+                        </td>
+                        <td class="text-end">
+                            <strong class="text-success">
+                                {{ "{:,.0f}".format(imports_list|sum(attribute='paid_amount') or 0) }} VND
+                            </strong>
+                        </td>
+                        <td class="text-end">
+                            <strong class="text-danger">
+                                {{ "{:,.0f}".format(imports_list|sum(attribute='total_price') - (imports_list|sum(attribute='paid_amount') or 0)) }} VND
                             </strong>
                         </td>
                         <td></td>
@@ -232,6 +297,7 @@
                 </tfoot>
             </table>
         </div>
+        </form>
         {% else %}
         <p class="text-muted text-center p-4 mb-0">Chua co phieu nhap nao trong thang nay.</p>
         {% endif %}
@@ -240,6 +306,28 @@
 {% endblock %}
 {% block extra_js %}
 <script>
+    function toggleAllChecks() {
+        var checked = document.getElementById('checkAll').checked;
+        document.querySelectorAll('.row-check').forEach(function(cb) {
+            cb.checked = checked;
+        });
+        updateSelectedCount();
+    }
+
+    function updateSelectedCount() {
+        var count = 0;
+        document.querySelectorAll('.row-check').forEach(function(cb) {
+            if (cb.checked) count++;
+        });
+        document.getElementById('selectedCount').textContent = count;
+        document.getElementById('deleteSelectedBtn').style.display = count > 0 ? '' : 'none';
+    }
+
+    // Khoi tao checkbox all khi trang load
+    document.addEventListener('DOMContentLoaded', function() {
+        updateSelectedCount();
+    });
+
     document.querySelectorAll('input[type="date"]').forEach(function(input) {
         if (!input.value) {
             input.value = new Date().toISOString().split('T')[0];

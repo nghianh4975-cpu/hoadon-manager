@@ -24,14 +24,31 @@
                 <div class="small text-muted">VND</div>
             </div>
         </div>
-        <div class="card">
+        <div class="card mb-3">
+            <div class="card-body text-center">
+                <div class="text-muted small">Da Thanh Toan</div>
+                <div class="stat-value text-success">{{ "{:,.0f}".format(total_paid) }}</div>
+            </div>
+        </div>
+        <div class="card mb-3 text-center">
             <div class="card-header bg-white"><h6 class="mb-0">Tong hop theo thang</h6></div>
             <div class="card-body p-0">
                 {% if monthly %}
-                {% for m, amt in monthly.items()|sort(reverse=true) %}
+                {% for m, data in monthly.items()|sort(reverse=true) %}
                 <div class="d-flex justify-content-between px-3 py-2 border-bottom">
                     <span>{{ m }}</span>
-                    <strong class="text-danger">{{ "{:,.0f}".format(amt) }}</strong>
+                    <div class="text-end">
+                        <span class="text-danger">{{ "{:,.0f}".format(data.debt) }}</span>
+                        <span class="text-muted mx-1">/</span>
+                        <span class="text-success">{{ "{:,.0f}".format(data.paid) }}</span>
+                        {% set remaining = data.debt - data.paid %}
+                        {% if remaining > 0 %}
+                        <span class="text-muted mx-1">=</span>
+                        <span class="text-danger fw-bold">{{ "{:,.0f}".format(remaining) }}</span>
+                        {% else %}
+                        <span class="badge bg-success ms-1">OK</span>
+                        {% endif %}
+                    </div>
                 </div>
                 {% endfor %}
                 {% else %}
@@ -56,6 +73,8 @@
                                 <th class="text-end">So Luong</th>
                                 <th class="text-end">Don Gia</th>
                                 <th class="text-end">Thanh Tien</th>
+                                <th class="text-end">Da TT</th>
+                                <th class="text-end">Con Lai</th>
                                 <th>Ghi chu</th>
                             </tr>
                         </thead>
@@ -68,6 +87,15 @@
                                 <td class="text-end">{{ "{:,.2f}".format(imp.quantity) }}</td>
                                 <td class="text-end">{{ "{:,.0f}".format(imp.unit_price) }}</td>
                                 <td class="text-end text-danger fw-bold">{{ "{:,.0f}".format(imp.total_price) }}</td>
+                                <td class="text-end text-success">{{ "{:,.0f}".format(imp.paid_amount or 0) }}</td>
+                                <td class="text-end">
+                                    {% set imp_remaining = (imp.total_price or 0) - (imp.paid_amount or 0) %}
+                                    {% if imp_remaining > 0 %}
+                                    <span class="text-danger fw-bold">{{ "{:,.0f}".format(imp_remaining) }}</span>
+                                    {% else %}
+                                    <span class="text-success">OK</span>
+                                    {% endif %}
+                                </td>
                                 <td>{{ imp.notes or '-' }}</td>
                             </tr>
                             {% endfor %}
@@ -76,6 +104,8 @@
                             <tr class="table-success">
                                 <td colspan="5" class="text-end"><strong>TONG CONG:</strong></td>
                                 <td class="text-end"><strong class="text-danger">{{ "{:,.0f}".format(total_debt) }} VND</strong></td>
+                                <td class="text-end"><strong class="text-success">{{ "{:,.0f}".format(total_paid) }} VND</strong></td>
+                                <td class="text-end"><strong class="text-danger">{{ "{:,.0f}".format(total_debt - total_paid) }} VND</strong></td>
                                 <td></td>
                             </tr>
                         </tfoot>
