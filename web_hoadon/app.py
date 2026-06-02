@@ -2269,7 +2269,7 @@ def import_batch():
         COUNT(i.id) as count
         FROM imports i
         LEFT JOIN materials m ON i.material_id = m.id
-        WHERE i.date LIKE ? AND (m.group_id IS NULL OR m.group_id = '')''',
+        WHERE i.date LIKE ? AND m.group_id IS NULL''',
         (f'{current_month}%',))
     no_group = c.fetchone()
     no_group_summary = {
