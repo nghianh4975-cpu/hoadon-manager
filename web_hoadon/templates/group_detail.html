@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}{{ group_name }} - Chi Tiet Nhom Hang{% endblock %}
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h2>
+            <span style="display:inline-block;width:20px;height:20px;border-radius:4px;background:{{ group_color }};vertical-align:middle"></span>
+            {{ group_name }}
+        </h2>
+        <p class="mb-0">Chi tiet tat ca mat hang trong nhom nay</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('import_page') }}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left"></i> Nhap Hang</a>
+        <a href="{{ url_for('groups_page') }}" class="btn btn-outline-primary"><i class="bi bi-collection"></i> Tat ca Nhom</a>
+    </div>
+</div>
+
+{% if materials_list %}
+<div class="row">
+    {% for mat in materials_list %}
+    <div class="col-md-4 mb-3">
+        <div class="card h-100">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center py-2">
+                <a href="{{ url_for('material_detail', material_id=mat.id) }}" class="text-decoration-none fw-bold">
+                    <i class="bi bi-box"></i> {{ mat.name }}
+                </a>
+                <a href="{{ url_for('material_detail', material_id=mat.id) }}" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-eye"></i>
+                </a>
+            </div>
+            <div class="card-body py-2">
+                <div class="d-flex justify-content-between small">
+                    <span class="text-muted">Don vi:</span>
+                    <span>{{ mat.unit or '-' }}</span>
+                </div>
+                <div class="d-flex justify-content-between small">
+                    <span class="text-muted">Tong nhap:</span>
+                    <strong class="text-danger">{{ "{:,.0f}".format(mat_totals.get(mat.id, 0)) }} VND</strong>
+                </div>
+                <div class="d-flex justify-content-between small">
+                    <span class="text-muted">So phieu:</span>
+                    <span>{{ material_imports.get(mat.id, [])|length }}</span>
+                </div>
+            </div>
+            {% if material_imports.get(mat.id, []) %}
+            <div class="card-footer p-0">
+                <table class="table table-sm table-hover mb-0 small">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Ngay</th>
+                            <th>NCC</th>
+                            <th class="text-end">SL</th>
+                            <th class="text-end">Thanh Tien</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for imp in material_imports.get(mat.id, [])[:5] %}
+                        <tr>
+                            <td>{{ imp.date }}</td>
+                            <td>{{ imp.supplier_name or '-' }}</td>
+                            <td class="text-end">{{ "{:,.1f}".format(imp.quantity) }}</td>
+                            <td class="text-end text-danger">{{ "{:,.0f}".format(imp.total_price) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="card mt-3">
+    <div class="card-body text-end">
+        <strong>Tong nhap nhom {{ group_name }}:</strong>
+        <span class="text-danger fw-bold ms-2 fs-5">{{ "{:,.0f}".format(total_all) }} VND</span>
+    </div>
+</div>
+{% else %}
+<div class="alert alert-info">Chua co nguyen lieu nao trong nhom nay.</div>
+{% endif %}
+{% endblock %}

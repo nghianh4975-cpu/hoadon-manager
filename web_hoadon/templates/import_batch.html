@@ -1,0 +1,525 @@
+{% extends "base.html" %}
+{% block title %}Nhap Nhanh - Nhap Hang{% endblock %}
+{% block content %}
+<style>
+    .group-live-card { border-left: 4px solid #6c757d; }
+    .group-item { transition: background-color 0.3s; border-radius: 4px; }
+    .group-item.highlight { background-color: #fff3cd !important; }
+    .group-item.updated { background-color: #d1e7dd !important; }
+    .num-col-selector { display: flex; align-items: center; gap: 6px; }
+</style>
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h2><i class="bi bi-upload"></i> Nhap Nhanh - Nhap Hang</h2>
+        <p class="mb-0">Dan text de nhap hang hoa, hoac nhap tay vao bang</p>
+    </div>
+    <a href="{{ url_for('import_page') }}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left"></i> Quay lai</a>
+</div>
+
+<div class="row">
+    {# ---- LEFT: FORM + TABLE ---- #}
+    <div class="col-lg-8">
+
+        {# ---- TEXT PASTE AREA ---- #}
+        <div class="card mb-3 border-primary">
+            <div class="card-header bg-primary text-white d-flex align-items-center gap-2">
+                <i class="bi bi-paste"></i>
+                <span>Dan Text - Nhap Hang Loat</span>
+                <span class="badge bg-warning text-dark ms-auto">Tip: Dan tu Excel, notepad, Google Sheet</span>
+            </div>
+            <div class="card-body">
+                <div class="row mb-2">
+                    <div class="col-md-4">
+                        <label class="form-label small text-muted">So cot trong text:</label>
+                        <select class="form-select form-select-sm" id="pasteNumCols">
+                            <option value="2">2 cot (Ten | Don gia)</option>
+                            <option value="3" selected>3 cot (Ten | So luong | Don gia)</option>
+                            <option value="4">4 cot (Ten | So luong | Don vi | Don gia)</option>
+                            <option value="5">5 cot (Ten | So luong | Don vi | Don gia | Ghi chu)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-8">
+                        <label class="form-label small text-muted">Ma phan cach (tu dong nhan):</label>
+                        <div class="d-flex gap-3 align-items-center h-100">
+                            <span class="badge bg-light text-dark border">Tab</span>
+                            <span class="badge bg-light text-dark border">Dau phay (,)</span>
+                            <span class="badge bg-light text-dark border">Dau cham phay (;)</span>
+                            <span class="badge bg-light text-dark border">Dau gach doc (|)</span>
+                        </div>
+                    </div>
+                </div>
+                <textarea class="form-control font-monospace" id="pasteArea" rows="6"
+                    placeholder="Dan text vao day, moi dong la 1 mat hang...&#10;&#10;Vi du:&#10;Thit bo  2  kg  120000&#10;Rau muong  5  bun  15000&#10;Dau an    3  chai  35000"></textarea>
+                <div class="d-flex gap-2 mt-2">
+                    <button type="button" class="btn btn-primary btn-sm" onclick="parsePaste()">
+                        <i class="bi bi-arrow-down-circle"></i> Chuyen vao bang
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="document.getElementById('pasteArea').value=''">
+                        <i class="bi bi-eraser"></i> Xoa text
+                    </button>
+                    <button type="button" class="btn btn-outline-danger btn-sm" onclick="clearTable()">
+                        <i class="bi bi-trash3"></i> Xoa bang
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        {# ---- TABLE ENTRY ---- #}
+        <div class="card mb-3">
+            <div class="card-header bg-white">
+                <div class="d-flex align-items-center gap-3">
+                    <h5 class="mb-0">Bang nhap lieu</h5>
+                    <div class="ms-auto d-flex align-items-center gap-2">
+                        <label class="form-label mb-0 small text-muted">So cot:</label>
+                        <select class="form-select form-select-sm" style="width:auto" id="numCols" onchange="rebuildTable()">
+                            <option value="3">3 cot (Ten | SL | DG)</option>
+                            <option value="4" selected>4 cot (Ten | SL | DV | DG)</option>
+                            <option value="5">5 cot (Ten | SL | DV | DG | GC)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+                <form method="POST" id="batchForm">
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Ngay nhap</label>
+                            <input type="date" name="import_date" class="form-control" value="{{ today_str }}" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Nha cung cap</label>
+                            <select name="supplier_id" class="form-select">
+                                <option value="">-- Chon NCC --</option>
+                                {% for sup in suppliers %}
+                                <option value="{{ sup.id }}">{{ sup.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Nhom mac dinh <span class="text-muted small">(neu dong khong chon nhom)</span></label>
+                            <select name="group_id" class="form-select" id="globalGroupId">
+                                <option value="">-- Khong co nhom --</option>
+                                {% for grp in groups %}
+                                <option value="{{ grp.id }}">{{ grp.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-bordered align-middle mb-0 table-sm" id="entryTable">
+                            <thead class="table-light" id="tableHead"></thead>
+                            <tbody id="entryBody"></tbody>
+                        </table>
+                    </div>
+
+                    <div class="d-flex align-items-center gap-3 mt-2">
+                        <button type="button" class="btn btn-sm btn-success" onclick="addRow()">
+                            <i class="bi bi-plus-circle"></i> Them dong
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="addRow(5)">
+                            <i class="bi bi-plus-square"></i> Them 5 dong
+                        </button>
+                        <div class="ms-auto d-flex align-items-center gap-2">
+                            <span class="fw-bold">TONG CONG:</span>
+                            <span class="fw-bold text-danger fs-5" id="grandTotal">0 VND</span>
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-2 mt-3">
+                        <button type="submit" class="btn btn-primary"><i class="bi bi-check-circle"></i> Nhap Nhanh</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    {# ---- RIGHT: GROUP SUMMARY ---- #}
+    <div class="col-lg-4">
+        <div class="card group-live-card mb-3">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-collection"></i> Nhom Hang - Tong Tien</h5>
+                <span class="badge bg-secondary">{{ today_str }}</span>
+            </div>
+            <div class="card-body p-0">
+                {% if group_summary or no_group_summary %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="table-secondary">
+                            <tr>
+                                <th>Nhom Hang</th>
+                                <th class="text-end">So Phieu</th>
+                                <th class="text-end">Tong Tien</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {# Dong "Khong co nhom" luon hien thi #}
+                            <tr class="group-item" id="group-row-0" data-group-id="0">
+                                <td>
+                                    <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#cccccc;vertical-align:middle;margin-right:6px"></span>
+                                    <strong>Khong co nhom</strong>
+                                </td>
+                                <td class="text-end" id="group-count-0">{{ no_group_summary.count if no_group_summary else 0 }}</td>
+                                <td class="text-end text-danger fw-bold" id="group-amount-0">{{ "{:,.0f}".format(no_group_summary.total_amount if no_group_summary else 0) }} VND</td>
+                            </tr>
+                            {% for grp in group_summary %}
+                            <tr class="group-item" id="group-row-{{ grp.id }}" data-group-id="{{ grp.id }}">
+                                <td>
+                                    <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:{{ grp.color or '#6c757d' }};vertical-align:middle;margin-right:6px"></span>
+                                    <strong>{{ grp.name }}</strong>
+                                </td>
+                                <td class="text-end" id="group-count-{{ grp.id }}">{{ grp.count }}</td>
+                                <td class="text-end text-danger fw-bold" id="group-amount-{{ grp.id }}">{{ "{:,.0f}".format(grp.total_amount) }} VND</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted text-center p-3 mb-0">Chua co du lieu.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header bg-white"><h5 class="mb-0">Huong dan</h5></div>
+            <div class="card-body">
+                <ul class="small mb-2">
+                    <li><strong>Dan text:</strong> chep du lieu tu Excel/Google Sheet dan vao o text</li>
+                    <li><strong>Tu dong nhan:</strong> Tab, dau phay, cham phay, dau gach doc</li>
+                    <li><strong>Chuyen vao bang:</strong> chuyen text thanh cac dong trong bang</li>
+                </ul>
+                <hr>
+                <ul class="small mb-0">
+                    <li><strong>3 cot:</strong> Ten | So luong | Don gia</li>
+                    <li><strong>4 cot:</strong> Ten | So luong | Don vi | Don gia</li>
+                    <li><strong>5 cot:</strong> Them cot Ghi chu</li>
+                    <li>Thay doi so cot se reset bang</li>
+                    <li><strong>Thanh tien</strong> tu dong</li>
+                    <li>Chon <strong>Nhom</strong> moi dong de phan loai</li>
+                    <li>Nhom hang <strong>cap nhat ngay</strong> khi nhap</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+// ---- Group data from server (base amounts from DB) ----
+var BASE_GROUP = {};
+{% if no_group_summary %}
+BASE_GROUP[0] = { total: {{ no_group_summary.total_amount }}, count: {{ no_group_summary.count }} };
+{% else %}
+BASE_GROUP[0] = { total: 0, count: 0 };
+{% endif %}
+{% for grp in group_summary %}
+BASE_GROUP[{{ grp.id }}] = { total: {{ grp.total_amount }}, count: {{ grp.count }} };
+{% endfor %}
+
+(function() {
+    var itemCount = 0;
+    var groupOptionsHtml = '';
+
+    // Build group options HTML once
+    groupOptionsHtml = '<option value="">--</option>';
+    {% for grp in groups %}
+    groupOptionsHtml += '<option value="{{ grp.id }}">{{ grp.name|e }}</option>';
+    {% endfor %}
+
+    // Pre-build selects with and without selected value
+    function buildGroupSelect(selectedVal) {
+        var opts = '<option value="">--</option>';
+        {% for grp in groups %}
+        var gid = '{{ grp.id }}';
+        var gname = {{ grp.name|tojson }};
+        opts += '<option value="' + gid + '"' + (selectedVal === gid ? ' selected' : '') + '>' + gname + '</option>';
+        {% endfor %}
+        return '<select class="form-select form-select-sm" name="row_group_' + itemCount + '" style="font-size:12px">' + opts + '</select>';
+    }
+
+    function formatMoney(n) {
+        if (n === undefined || n === null || isNaN(n)) return '0 VND';
+        return n.toLocaleString('vi-VN') + ' VND';
+    }
+
+    function parseNum(s) {
+        if (!s) return 0;
+        var cleaned = String(s).replace(/,/g, '');
+        var v = parseFloat(cleaned);
+        return isNaN(v) ? 0 : v;
+    }
+
+    function getCols(n) {
+        var cols = [
+            { name: 'Ten Nguyen Lieu', attr: 'name', type: 'text', placeholder: 'Ten nguyen lieu...', width: '' },
+            { name: 'So Luong', attr: 'qty', type: 'number', placeholder: '0', width: '90px', align: 'text-end' },
+            { name: 'Don Vi', attr: 'unit', type: 'text', placeholder: 'kg, cai...', width: '100px', align: '' },
+            { name: 'Don Gia', attr: 'price', type: 'number', placeholder: '0', width: '130px', align: 'text-end' },
+            { name: 'Ghi Chu', attr: 'note', type: 'text', placeholder: 'Ghi chu...', width: '', align: '' }
+        ];
+        return cols.slice(0, n);
+    }
+
+    function rebuildTable() {
+        var n = parseInt(document.getElementById('numCols').value);
+        var cols = getCols(n);
+
+        var thead = document.getElementById('tableHead');
+        var thHTML = '<tr><th style="width:30px">#</th>';
+        cols.forEach(function(col) {
+            var style = col.width ? 'width:' + col.width : '';
+            thHTML += '<th style="' + style + '">' + col.name + '</th>';
+        });
+        thHTML += '<th style="width:150px">Nhom</th>';
+        thHTML += '<th style="width:140px" class="text-end">Thanh Tien</th>';
+        thHTML += '<th style="width:36px"><i class="bi bi-trash"></i></th></tr>';
+        thead.innerHTML = thHTML;
+
+        document.getElementById('entryBody').innerHTML = '';
+        itemCount = 0;
+        addRow();
+        calcAll();
+    }
+
+    function addRow(count, data) {
+        count = count || 1;
+        var n = parseInt(document.getElementById('numCols').value);
+        var cols = getCols(n);
+        var tbody = document.getElementById('entryBody');
+
+        for (var c = 0; c < count; c++) {
+            itemCount++;
+            var rowData = data && data[c] !== undefined ? data[c] : {};
+            var groupVal = rowData.row_group !== undefined ? rowData.row_group : '';
+
+            var tr = document.createElement('tr');
+            tr.className = 'item-row';
+
+            var html = '<td class="text-muted small pt-2" style="width:30px">' + itemCount + '</td>';
+            cols.forEach(function(col) {
+                var val = rowData[col.attr] !== undefined ? (rowData[col.attr] || '') : '';
+                html += '<td><input type="' + col.type + '" class="form-control ' + (col.align || '') + '" ' +
+                        'name="' + col.attr + '_' + itemCount + '" placeholder="' + col.placeholder + '"' +
+                        (col.type === 'number' ? ' step="any" min="0"' : '') +
+                        ' value="' + val + '"></td>';
+            });
+
+            // Cot nhom cho dong nay
+            html += '<td style="width:150px">' + buildGroupSelect(groupVal) + '</td>';
+
+            html += '<td class="text-end pt-2 fw-bold text-danger row-total">0 VND</td>';
+            html += '<td style="width:36px"><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeItem(this)"><i class="bi bi-x"></i></button></td>';
+
+            tr.innerHTML = html;
+            tbody.appendChild(tr);
+
+            var qtyInput = tr.querySelector('[name^="qty_"]');
+            var priceInput = tr.querySelector('[name^="price_"]');
+            var grpSelect = tr.querySelector('[name^="row_group_"]');
+            if (qtyInput) qtyInput.addEventListener('input', calcAll);
+            if (priceInput) priceInput.addEventListener('input', calcAll);
+            if (grpSelect) grpSelect.addEventListener('change', calcAll);
+        }
+    }
+
+    function calcAll() {
+        var total = 0;
+        // groupTotals: { groupId -> { amount, count } }
+        var groupTotals = {};
+
+        document.querySelectorAll('.item-row').forEach(function(row) {
+            var nameInput = row.querySelector('input[name^="name_"]');
+            var qty = parseNum(row.querySelector('input[name^="qty_"]').value);
+            var price = parseNum(row.querySelector('input[name^="price_"]').value);
+            var sub = qty * price;
+            row.querySelector('.row-total').textContent = formatMoney(sub);
+            total += sub;
+
+            // Lay nhom cua dong nay (hoac mac dinh tu global)
+            var rowGroupSelect = row.querySelector('[name^="row_group_"]');
+            var rowGid = rowGroupSelect && rowGroupSelect.value ? parseInt(rowGroupSelect.value) : null;
+
+            // Neu dong khong co nhom, lay tu global
+            var gid = rowGid;
+            if (gid === null) {
+                var ggid = parseInt(document.getElementById('globalGroupId').value) || 0;
+                gid = ggid;
+            }
+
+            if (!groupTotals[gid]) groupTotals[gid] = { amount: 0, count: 0 };
+            groupTotals[gid].amount += sub;
+            if (nameInput && nameInput.value.trim()) groupTotals[gid].count++;
+        });
+
+        document.getElementById('grandTotal').textContent = formatMoney(total);
+        updateGroupSummary(groupTotals);
+    }
+
+    function updateGroupSummary(groupTotals) {
+        // Reset all rows to BASE
+        Object.keys(BASE_GROUP).forEach(function(gid) {
+            var gidNum = parseInt(gid);
+            var amtEl = document.getElementById('group-amount-' + gidNum);
+            var cntEl = document.getElementById('group-count-' + gidNum);
+            var rowEl = document.getElementById('group-row-' + gidNum);
+            if (rowEl) {
+                rowEl.classList.remove('highlight', 'updated');
+                var isNew = !groupTotals[gidNum];
+                if (isNew) {
+                    if (amtEl) amtEl.textContent = formatMoney(BASE_GROUP[gidNum].total);
+                    if (cntEl) cntEl.textContent = BASE_GROUP[gidNum].count;
+                }
+            }
+        });
+
+        // Apply new amounts
+        Object.keys(groupTotals).forEach(function(gid) {
+            var gidNum = parseInt(gid);
+            var data = groupTotals[gidNum];
+            var rowEl = document.getElementById('group-row-' + gidNum);
+            var amtEl = document.getElementById('group-amount-' + gidNum);
+            var cntEl = document.getElementById('group-count-' + gidNum);
+
+            if (!BASE_GROUP[gidNum]) {
+                BASE_GROUP[gidNum] = { total: 0, count: 0 };
+            }
+
+            var newTotal = BASE_GROUP[gidNum].total + data.amount;
+            var newCount = BASE_GROUP[gidNum].count + data.count;
+
+            if (rowEl) rowEl.classList.add('updated');
+            if (amtEl) amtEl.textContent = formatMoney(newTotal);
+            if (cntEl) cntEl.textContent = newCount;
+        });
+    }
+
+    function removeItem(btn) {
+        var tbody = document.getElementById('entryBody');
+        if (tbody.querySelectorAll('.item-row').length <= 1) return;
+        btn.closest('tr').remove();
+        reindexRows();
+        calcAll();
+    }
+
+    function reindexRows() {
+        itemCount = 0;
+        document.querySelectorAll('.item-row').forEach(function(row) {
+            itemCount++;
+            row.querySelector('td:first-child').textContent = itemCount;
+        });
+    }
+
+    function clearTable() {
+        document.getElementById('entryBody').innerHTML = '';
+        itemCount = 0;
+        addRow();
+        calcAll();
+    }
+
+    function parsePaste() {
+        var text = document.getElementById('pasteArea').value.trim();
+        if (!text) return;
+
+        var numCols = parseInt(document.getElementById('pasteNumCols').value);
+        var lines = text.split('\n');
+        var parsedRows = [];
+
+        lines.forEach(function(line) {
+            line = line.trim();
+            if (!line) return;
+            var lower = line.toLowerCase();
+            if (lower.includes('tong') || lower.includes('total') || lower.includes('thanhtien')) return;
+
+            var parts;
+            var separators = [
+                { re: /\t/, fn: function(l) { return l.split('\t'); } },
+                { re: /\|/, fn: function(l) { return l.split('|'); } },
+                { re: /;/, fn: function(l) { return l.split(';'); } },
+                { re: /,/, fn: function(l) { return l.split(','); } },
+                { re: / {2,}/, fn: function(l) { return l.split(/ {2,}/); } }
+            ];
+            var usedSep = null;
+            for (var i = 0; i < separators.length; i++) {
+                if (separators[i].re.test(line)) {
+                    parts = separators[i].fn(line).map(function(p) { return p.trim(); });
+                    usedSep = separators[i].re;
+                    break;
+                }
+            }
+            if (!usedSep) {
+                var tokens = line.split(/\s+/);
+                var numbers = [], words = [];
+                tokens.forEach(function(t) {
+                    var clean = t.replace(/,/g, '');
+                    if (/^\d/.test(clean) || /^\d/.test(t)) numbers.push(clean);
+                    else words.push(t);
+                });
+                if (words.length > 0 && numbers.length > 0) {
+                    if (numbers.length === 1) parts = [words.join(' '), '1', numbers[0]];
+                    else parts = [words.join(' '), numbers[numbers.length - 2], numbers[numbers.length - 1]];
+                }
+            }
+
+            if (!parts || parts.length < 2) {
+                parts = line.split(/\s{2,}/).map(function(p) { return p.trim(); }).filter(Boolean);
+            }
+
+            if (parts && parts.length >= 2) {
+                var row = { name: parts[0] };
+                if (numCols >= 2 && parts[1]) row.qty = parts[1].replace(/,/g, '');
+                if (numCols >= 3 && parts[2]) row.unit = parts[2];
+                if (numCols >= 3 && parts[2] && /^\d/.test(parts[2].replace(/,/g,''))) {
+                    row.price = parts[2].replace(/,/g, '');
+                    if (numCols >= 4 && parts[3]) row.unit = parts[3];
+                    if (numCols >= 4 && parts[3] && /^\d/.test(parts[3].replace(/,/g,''))) {
+                        row.price = parts[3].replace(/,/g, '');
+                        if (numCols >= 5 && parts[4]) row.note = parts[4];
+                    }
+                }
+                if (numCols >= 4 && parts[3]) row.price = parts[3].replace(/,/g, '');
+                if (numCols >= 5 && parts[4]) row.note = parts[4];
+                if (numCols === 3 && parts.length >= 3 && !isNaN(parseFloat(parts[1].replace(/,/g,''))) && !isNaN(parseFloat(parts[2].replace(/,/g,'')))) {
+                    row.qty = parts[1].replace(/,/g, '');
+                    row.price = parts[2].replace(/,/g, '');
+                    row.unit = '';
+                }
+                parsedRows.push(row);
+            }
+        });
+
+        if (parsedRows.length === 0) {
+            alert('Khong the parse duoc text. Vui long kiem tra dinh dang.');
+            return;
+        }
+
+        document.getElementById('entryBody').innerHTML = '';
+        itemCount = 0;
+        parsedRows.forEach(function(data) { addRow(1, [data]); });
+        calcAll();
+        document.getElementById('pasteArea').value = '';
+    }
+
+    window.removeItem = removeItem;
+    window.addRow = addRow;
+    window.parsePaste = parsePaste;
+    window.clearTable = clearTable;
+
+    document.getElementById('globalGroupId').addEventListener('change', calcAll);
+
+    document.getElementById('batchForm').addEventListener('submit', function(e) {
+        var hasData = false;
+        document.querySelectorAll('.item-row').forEach(function(row) {
+            var name = row.querySelector('input[name^="name_"]').value.trim();
+            if (name) hasData = true;
+        });
+        if (!hasData) {
+            e.preventDefault();
+            alert('Vui long nhap it nhat 1 nguyen lieu!');
+        }
+    });
+
+    rebuildTable();
+})();
+</script>
+{% endblock %}

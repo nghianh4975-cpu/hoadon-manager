@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Nhom Hang{% endblock %}
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h2><i class="bi bi-collection"></i> Quan Ly Nhom Hang</h2>
+        <p class="mb-0">Nhom hang hoa: Thit, Rau, Gia vi...</p>
+    </div>
+    <a href="{{ url_for('import_page') }}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left"></i> Quay lai Nhap Hang</a>
+</div>
+
+<div class="row">
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-header bg-white"><h5 class="mb-0">Them Nhom Moi</h5></div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('groups_add') }}">
+                    <div class="mb-2">
+                        <label class="form-label">Ten nhom <span class="text-danger">*</span></label>
+                        <input type="text" name="name" class="form-control" placeholder="VD: Thit, Rau, Gia vi..." required>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Mau sac</label>
+                        <div class="d-flex gap-2 align-items-center">
+                            <input type="color" name="color" class="form-control form-control-color" value="#0078D4" style="width:50px">
+                            <input type="number" name="sort_order" class="form-control" placeholder="Thu tu" value="0" style="width:80px">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100"><i class="bi bi-plus-circle"></i> Them Nhom</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-9">
+        <div class="card">
+            <div class="card-header bg-white"><h5 class="mb-0">Danh Sach Nhom Hang</h5></div>
+            <div class="card-body p-0">
+                {% if groups %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Thu tu</th>
+                                <th>Mau</th>
+                                <th>Ten Nhom</th>
+                                <th>So mat hang</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for grp in groups %}
+                            <tr>
+                                <td>{{ grp.sort_order or 0 }}</td>
+                                <td>
+                                    <span style="display:inline-block;width:24px;height:24px;border-radius:4px;background:{{ grp.color or '#0078D4' }}"></span>
+                                </td>
+                                <td>
+                                    <a href="{{ url_for('group_detail', group_id=grp.id) }}" class="text-decoration-none fw-bold">
+                                        <i class="bi bi-chevron-right"></i> {{ grp.name }}
+                                    </a>
+                                </td>
+                                <td><span class="badge bg-secondary">{{ group_counts.get(grp.id, 0) }}</span></td>
+                                <td>
+                                    <form method="POST" action="{{ url_for('groups_delete', group_id=grp.id) }}"
+                                          onsubmit="return confirm('Xoa nhom nay? Nguyen lieu se khong bi xoa.')">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                            <tr class="table-light">
+                                <td>-</td>
+                                <td><span style="display:inline-block;width:24px;height:24px;border-radius:4px;background:#6c757d;border:1px dashed #adb5bd"></span></td>
+                                <td>
+                                    <a href="{{ url_for('group_detail', group_id=0) }}" class="text-decoration-none fw-bold text-muted">
+                                        <i class="bi bi-chevron-right"></i> Khong co nhom
+                                    </a>
+                                </td>
+                                <td><span class="badge bg-secondary">{{ group_counts.get(0, 0) }}</span></td>
+                                <td></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted text-center p-4 mb-0">Chua co nhom nao.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
