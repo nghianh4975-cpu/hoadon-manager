@@ -159,6 +159,10 @@
             <button type="button" class="btn btn-sm btn-outline-primary" onclick="toggleAllChecks()">
                 <i class="bi bi-check2-square"></i> Chon Tat Ca
             </button>
+            <button type="button" class="btn btn-sm btn-outline-warning" id="editSelectedBtn" style="display:none"
+                onclick="openBatchEditModal()">
+                <i class="bi bi-pencil-square"></i> Sua Da Chon
+            </button>
             <button type="button" class="btn btn-sm btn-danger" id="deleteSelectedBtn" style="display:none"
                 onclick="doBatchDelete()">
                 <i class="bi bi-trash"></i> Xoa Da Chon (<span id="selectedCount">0</span>)
@@ -188,13 +192,27 @@
                 </select>
             </div>
             <div class="col-md-1">
-                <input type="number" step="0.01" name="quantity" class="form-control" placeholder="So luong" required>
+                <input type="text" name="unit" class="form-control" placeholder="Don vi" list="unitSuggestions">
+                <datalist id="unitSuggestions">
+                    <option value="kg">
+                    <option value="gam">
+                    <option value="cai">
+                    <option value="chiec">
+                    <option value="goi">
+                    <option value="chai">
+                    <option value="hop">
+                    <option value="bao">
+                    <option value="lit">
+                </datalist>
+            </div>
+            <div class="col-md-1">
+                <input type="number" step="1000" name="quantity" class="form-control" placeholder="So luong" required>
             </div>
             <div class="col-md-2">
-                <input type="number" step="0.01" name="unit_price" class="form-control" placeholder="Don gia" required>
+                <input type="number" step="1000" name="unit_price" class="form-control" placeholder="Don gia" required>
             </div>
             <div class="col-md-2">
-                <input type="text" name="notes" class="form-control" placeholder="Ghi chu">
+                <input type="number" step="1000" name="paid_amount" class="form-control" placeholder="Thanh toan (0=chua tra)">
             </div>
             <div class="col-md-1">
                 <button type="submit" class="btn btn-primary w-100"><i class="bi bi-plus-circle"></i> Them</button>
@@ -220,6 +238,7 @@
                         <th class="text-end">Thanh Tien</th>
                         <th class="text-end">Da TT</th>
                         <th class="text-end">Con Lai</th>
+                        <th class="text-center">So Lan</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -252,7 +271,11 @@
                         <td class="text-end text-danger fw-bold">{{ "{:,.0f}".format(imp.total_price) }}</td>
                         <td class="text-end">
                             {% set imp_paid = imp.paid_amount if imp.paid_amount else 0 %}
-                            <span class="text-success">{{ "{:,.0f}".format(imp_paid) }}</span>
+                            {% if imp_paid > 0 %}
+                            <span class="text-success" title="{{ imp.paid_details or '' }}">{{ "{:,.0f}".format(imp_paid) }}</span>
+                            {% else %}
+                            <span class="text-muted">--</span>
+                            {% endif %}
                         </td>
                         <td class="text-end">
                             {% set imp_remaining = (imp.total_price or 0) - (imp.paid_amount or 0) %}
@@ -262,10 +285,17 @@
                             <span class="text-success">OK</span>
                             {% endif %}
                         </td>
+                        <td class="text-center">
+                            {% if imp.payment_count and imp.payment_count > 0 %}
+                            <span class="badge bg-success" title="Chi tiet: {{ imp.paid_details or '' }}">{{ imp.payment_count }} lan</span>
+                            {% else %}
+                            <span class="badge bg-secondary">0</span>
+                            {% endif %}
+                        </td>
                         <td>
                             <div class="d-flex gap-1">
                                 <button type="button" class="btn btn-sm btn-outline-warning"
-                                    onclick="openEditModal({{ imp.id }}, '{{ imp.date }}', '{{ imp.supplier_id or '' }}', '{{ imp.material_id or '' }}', {{ imp.quantity }}, {{ imp.unit_price }}, '{{ imp.notes or '' }}', {{ imp_paid }})"
+                                    onclick="openEditModal({{ imp.id }}, '{{ imp.date }}', '{{ imp.supplier_id or '' }}', '{{ imp.material_id or '' }}', {{ imp.quantity }}, {{ imp.unit_price }}, '{{ imp.notes or '' }}', {{ imp.paid_amount or 0 }}, '{{ imp.unit or '' }}')"
                                     title="Sua phieu">
                                     <i class="bi bi-pencil"></i>
                                 </button>
@@ -280,7 +310,7 @@
                 </tbody>
                 <tfoot>
                     <tr class="table-primary">
-                        <td colspan="7" class="text-end"><strong>TONG CONG NHAP HANG:</strong></td>
+                        <td colspan="6" class="text-end"><strong>TONG CONG NHAP HANG:</strong></td>
                         <td class="text-end">
                             <strong class="text-danger">
                                 {{ "{:,.0f}".format(imports_list|sum(attribute='total_price')) }} VND
@@ -295,6 +325,9 @@
                             <strong class="text-danger">
                                 {{ "{:,.0f}".format(imports_list|sum(attribute='total_price') - (imports_list|sum(attribute='paid_amount') or 0)) }} VND
                             </strong>
+                        </td>
+                        <td class="text-center">
+                            <strong>{{ (imports_list|selectattr('payment_count')|sum(attribute='payment_count') or 0) }}</strong>
                         </td>
                         <td></td>
                     </tr>
@@ -350,15 +383,24 @@
                         </div>
                     </div>
                     <div class="row g-2 mb-2">
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                             <label class="form-label small">So Luong</label>
                             <input type="number" step="0.01" name="quantity" id="editQuantity" class="form-control" required>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-3">
+                            <label class="form-label small">Don Vi</label>
+                            <input type="text" name="unit" id="editUnit" class="form-control" placeholder="kg, cai..." list="unitSuggestionsEditM">
+                            <datalist id="unitSuggestionsEditM">
+                                <option value="kg"><option value="gam"><option value="cai">
+                                <option value="chiec"><option value="goi"><option value="chai">
+                                <option value="hop"><option value="bao"><option value="lit">
+                            </datalist>
+                        </div>
+                        <div class="col-md-3">
                             <label class="form-label small">Don Gia</label>
                             <input type="number" step="0.01" name="unit_price" id="editPrice" class="form-control" required>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                             <label class="form-label small">Da Thanh Toan</label>
                             <input type="number" step="1000" name="paid_amount" id="editPaid" class="form-control" placeholder="0">
                         </div>
@@ -367,6 +409,79 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Huy</button>
                     <button type="submit" class="btn btn-warning"><i class="bi bi-check-circle"></i> Luu</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{# ---- MODAL SUA HANG LOAT ---- #}
+<div class="modal fade" id="batchEditModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title"><i class="bi bi-pencil-square"></i> Sua Hang Loat - <span id="batchEditCount">0</span> phieu</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('import_batch_edit') }}" id="batchEditForm">
+                <input type="hidden" name="month" value="{{ month }}">
+                <input type="hidden" name="edit_ids" id="batchEditIds">
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">Chi nhung truong duoc dien se duoc cap nhat cho tat ca phieu da chon.</p>
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-4">
+                            <label class="form-label small">Ngay moi</label>
+                            <input type="date" name="date" id="batchDate" class="form-control">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small">Nha Cung Cap moi</label>
+                            <select name="supplier_id" id="batchSupplier" class="form-select">
+                                <option value="">-- Giu nguyen --</option>
+                                {% for sup in suppliers %}
+                                <option value="{{ sup.id }}">{{ sup.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small">Nguyen Lieu moi</label>
+                            <select name="material_id" id="batchMaterial" class="form-select">
+                                <option value="">-- Giu nguyen --</option>
+                                {% for mat in materials %}
+                                <option value="{{ mat.id }}">{{ mat.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-3">
+                            <label class="form-label small">So Luong moi</label>
+                            <input type="number" step="0.01" name="quantity" id="batchQuantity" class="form-control" placeholder="Giu nguyen">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small">Don Vi moi</label>
+                            <input type="text" name="unit" id="batchUnit" class="form-control" placeholder="Giu nguyen" list="unitSuggestionsBE">
+                            <datalist id="unitSuggestionsBE">
+                                <option value="kg"><option value="gam"><option value="cai">
+                                <option value="chiec"><option value="goi"><option value="chai">
+                                <option value="hop"><option value="bao"><option value="lit">
+                            </datalist>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small">Don Gia moi</label>
+                            <input type="number" step="1000" name="unit_price" id="batchUnitPrice" class="form-control" placeholder="Giu nguyen">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small">Ghi Chu moi</label>
+                            <input type="text" name="notes" id="batchNotes" class="form-control" placeholder="Giu nguyen">
+                        </div>
+                    </div>
+                    <div class="alert alert-info small mb-0">
+                        <i class="bi bi-info-circle"></i> Thanh tien = So luong x Don gia se duoc tu dong tinh lai.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Huy</button>
+                    <button type="submit" class="btn btn-warning"><i class="bi bi-check-circle"></i> Luu Tat Ca</button>
                 </div>
             </form>
         </div>
@@ -390,6 +505,22 @@
         });
         document.getElementById('selectedCount').textContent = count;
         document.getElementById('deleteSelectedBtn').style.display = count > 0 ? '' : 'none';
+        document.getElementById('editSelectedBtn').style.display = count > 0 ? '' : 'none';
+    }
+
+    function openBatchEditModal() {
+        var ids = [];
+        document.querySelectorAll('.row-check:checked').forEach(function(cb) {
+            ids.push(cb.value);
+        });
+        if (ids.length === 0) {
+            alert('Chua chon phieu nao!');
+            return;
+        }
+        document.getElementById('batchEditIds').value = ids.join(',');
+        document.getElementById('batchEditCount').textContent = ids.length;
+        var modal = new bootstrap.Modal(document.getElementById('batchEditModal'));
+        modal.show();
     }
 
     function doBatchDelete() {
@@ -406,12 +537,13 @@
         document.getElementById('batchDeleteForm').submit();
     }
 
-    function openEditModal(id, date, supplierId, materialId, qty, price, notes, paid) {
+    function openEditModal(id, date, supplierId, materialId, qty, price, notes, paid, unit) {
         document.getElementById('editImportId').value = id;
         document.getElementById('editDate').value = date;
         document.getElementById('editSupplier').value = supplierId;
         document.getElementById('editMaterial').value = materialId;
         document.getElementById('editQuantity').value = qty;
+        document.getElementById('editUnit').value = unit || '';
         document.getElementById('editPrice').value = price;
         document.getElementById('editNotes').value = notes;
         document.getElementById('editPaid').value = paid;

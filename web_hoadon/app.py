@@ -253,6 +253,18 @@ def init_db():
             c.execute('ALTER TABLE imports ADD COLUMN paid_amount REAL DEFAULT 0')
         except Exception:
             pass
+        try:
+            c.execute("ALTER TABLE imports ADD COLUMN unit TEXT DEFAULT ''")
+        except Exception:
+            pass
+        try:
+            c.execute('ALTER TABLE imports ADD COLUMN payment_count INTEGER DEFAULT 0')
+        except Exception:
+            pass
+        try:
+            c.execute("ALTER TABLE imports ADD COLUMN paid_details TEXT DEFAULT ''")
+        except Exception:
+            pass
         c.execute('''CREATE TABLE IF NOT EXISTS inventory (
             id SERIAL PRIMARY KEY,
             month VARCHAR(7) NOT NULL,
@@ -339,6 +351,7 @@ def init_db():
             material_id INTEGER,
             supplier_id INTEGER,
             quantity REAL DEFAULT 0,
+            unit TEXT DEFAULT '',
             unit_price REAL DEFAULT 0,
             total_price REAL DEFAULT 0,
             notes TEXT,
@@ -348,6 +361,18 @@ def init_db():
         )''')
         try:
             c.execute('ALTER TABLE imports ADD COLUMN paid_amount REAL DEFAULT 0')
+        except Exception:
+            pass
+        try:
+            c.execute("ALTER TABLE imports ADD COLUMN unit TEXT DEFAULT ''")
+        except Exception:
+            pass
+        try:
+            c.execute('ALTER TABLE imports ADD COLUMN payment_count INTEGER DEFAULT 0')
+        except Exception:
+            pass
+        try:
+            c.execute("ALTER TABLE imports ADD COLUMN paid_details TEXT DEFAULT ''")
         except Exception:
             pass
         c.execute('''CREATE TABLE IF NOT EXISTS inventory (
@@ -1853,7 +1878,11 @@ def import_page():
     # Lay tat ca import trong thang
     c.execute('''SELECT i.id, i.date, s.name as supplier_name, s.id as supplier_id,
         m.name as material_name, m.id as material_id,
-        m.unit, i.quantity, i.unit_price, i.total_price, i.paid_amount
+        COALESCE(NULLIF(TRIM(i.unit), ''), m.unit) as unit,
+        i.quantity, i.unit_price, i.total_price, i.paid_amount,
+        COALESCE(i.payment_count, 0) as payment_count,
+        i.paid_details,
+        COALESCE(i.paid_amount, 0) as paid_amount_val
         FROM imports i
         LEFT JOIN suppliers s ON i.supplier_id = s.id
         LEFT JOIN materials m ON i.material_id = m.id
@@ -2034,6 +2063,8 @@ def import_add():
     supplier_id = request.form.get('supplier_id', '')
     quantity = float(request.form.get('quantity', 0) or 0)
     unit_price = float(request.form.get('unit_price', 0) or 0)
+    unit = request.form.get('unit', '').strip()
+    paid_amount = float(request.form.get('paid_amount', 0) or 0)
     notes = request.form.get('notes', '')
 
     if not date or not material_id or quantity <= 0 or unit_price <= 0:
@@ -2043,22 +2074,36 @@ def import_add():
     total_price = quantity * unit_price
     month = date[:7]  # YYYY-MM
 
+    # Tinh payment count va details
+    payment_count = 0
+    paid_details = ''
+    if paid_amount > 0:
+        payment_count = 1
+        today_str = datetime.date.today().strftime('%Y-%m-%d')
+        paid_details = f'{today_str}:{int(paid_amount)}'
+
     conn = get_db()
     c = conn.cursor()
+
+    # Cap nhat don vi neu co
+    if unit:
+        c.execute('UPDATE materials SET unit=? WHERE id=?', (unit, material_id))
 
     # Insert phieu nhap
     if USE_PG:
         c.execute('''INSERT INTO imports
-            (date, material_id, supplier_id, quantity, unit_price, total_price, notes, created_by)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)''',
-            (date, material_id, supplier_id, quantity, unit_price, total_price, notes,
-             session['username']))
+            (date, material_id, supplier_id, quantity, unit, unit_price, total_price,
+             notes, paid_amount, payment_count, paid_details, created_by)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
+            (date, material_id, supplier_id, quantity, unit, unit_price, total_price,
+             notes, paid_amount, payment_count, paid_details, session['username']))
     else:
         c.execute('''INSERT INTO imports
-            (date, material_id, supplier_id, quantity, unit_price, total_price, notes, created_by)
-            VALUES (?,?,?,?,?,?,?,?)''',
-            (date, material_id, supplier_id, quantity, unit_price, total_price, notes,
-             session['username']))
+            (date, material_id, supplier_id, quantity, unit, unit_price, total_price,
+             notes, paid_amount, payment_count, paid_details, created_by)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)''',
+            (date, material_id, supplier_id, quantity, unit, unit_price, total_price,
+             notes, paid_amount, payment_count, paid_details, session['username']))
 
     # Cap nhat ton kho: neu chua co record thi insert, neu co thi update
     # Cong nhap vao closing_stock
@@ -2242,6 +2287,7 @@ def import_update_single():
     new_material_id = request.form.get('material_id', '') or None
     new_quantity = float(request.form.get('quantity', 0) or 0)
     new_unit_price = float(request.form.get('unit_price', 0) or 0)
+    new_unit = request.form.get('unit', '').strip()
     new_notes = request.form.get('notes', '').strip()
     new_paid = float(request.form.get('paid_amount', 0) or 0)
     month = request.form.get('month', datetime.date.today().strftime('%Y-%m'))
@@ -2308,10 +2354,10 @@ def import_update_single():
 
     # Cap nhat phieu nhap
     c.execute('''UPDATE imports SET date=?, material_id=?, supplier_id=?,
-        quantity=?, unit_price=?, total_price=?, notes=?, paid_amount=?
+        quantity=?, unit=?, unit_price=?, total_price=?, notes=?, paid_amount=?
         WHERE id=?''',
         (new_date, new_material_id, new_supplier_id, new_quantity,
-         new_unit_price, new_total, new_notes, new_paid, import_id))
+         new_unit, new_unit_price, new_total, new_notes, new_paid, import_id))
 
     conn.commit()
     conn.close()
@@ -2358,10 +2404,10 @@ def import_batch():
                     # Neu material chua co nhom, gan nhom cua dong nay
                     if (mat['group_id'] is None or mat['group_id'] == '') and effective_group_id:
                         c.execute('UPDATE materials SET group_id=? WHERE id=?', (effective_group_id, material_id))
-                    # Cap nhat don vi neu khac rong
+                    # Cap nhat don vi (luc nao cung update, vi user co the nhap dung don vi)
                     if unit and unit.strip():
-                        c.execute("UPDATE materials SET unit=%s WHERE id=%s AND (unit IS NULL OR unit=%s)",
-                                  (unit, material_id, ''))
+                        c.execute("UPDATE materials SET unit=? WHERE id=?",
+                                  (unit, material_id))
                 else:
                     if USE_PG:
                         c.execute('INSERT INTO materials (name, group_id, unit) VALUES (%s,%s,%s) RETURNING id',
@@ -2372,16 +2418,29 @@ def import_batch():
                                   (name, effective_group_id, unit))
                         material_id = c.lastrowid
 
+                # Thanh toan cho batch: mac dinh 0, tinh details
+                paid_amount = float(request.form.get('batch_paid_amount', 0) or 0)
+                payment_count = 0
+                paid_details = ''
+                if paid_amount > 0:
+                    payment_count = 1
+                    today_str_d = datetime.date.today().strftime('%Y-%m-%d')
+                    paid_details = f'{today_str_d}:{int(paid_amount)}'
+
                 if USE_PG:
                     c.execute('''INSERT INTO imports
-                        (date, material_id, supplier_id, quantity, unit_price, total_price, created_by)
-                        VALUES (%s,%s,%s,%s,%s,%s,%s)''',
-                        (date, material_id, supplier_id, qty, price, total, session['username']))
+                        (date, material_id, supplier_id, quantity, unit, unit_price, total_price,
+                         paid_amount, payment_count, paid_details, created_by)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
+                        (date, material_id, supplier_id, qty, unit, price, total,
+                         paid_amount, payment_count, paid_details, session['username']))
                 else:
                     c.execute('''INSERT INTO imports
-                        (date, material_id, supplier_id, quantity, unit_price, total_price, created_by)
-                        VALUES (?,?,?,?,?,?,?)''',
-                        (date, material_id, supplier_id, qty, price, total, session['username']))
+                        (date, material_id, supplier_id, quantity, unit, unit_price, total_price,
+                         paid_amount, payment_count, paid_details, created_by)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?)''',
+                        (date, material_id, supplier_id, qty, unit, price, total,
+                         paid_amount, payment_count, paid_details, session['username']))
 
                 # Cap nhat ton kho
                 c.execute('''SELECT id, opening_stock, import_qty, closing_stock FROM inventory
@@ -2457,6 +2516,118 @@ def import_batch():
         today_str=datetime.date.today().strftime('%Y-%m-%d'),
         group_summary=group_summary,
         no_group_summary=no_group_summary)
+
+
+# Sua nhieu phieu cung luc
+@app.route('/import/batch-edit', methods=['POST'])
+@login_required
+def import_batch_edit():
+    ids_str = request.form.get('edit_ids', '')
+    if not ids_str:
+        flash('Chua chon phieu nao!', 'danger')
+        return redirect(url_for('import_page'))
+
+    ids = [int(x.strip()) for x in ids_str.split(',') if x.strip()]
+    if not ids:
+        flash('Danh sach ID khong hop le!', 'danger')
+        return redirect(url_for('import_page'))
+
+    month = request.form.get('month', datetime.date.today().strftime('%Y-%m'))
+
+    # Lay cac gia tri moi (empty = giu nguyen)
+    new_date = request.form.get('date', '').strip()
+    new_supplier_id = request.form.get('supplier_id', '').strip()
+    new_material_id = request.form.get('material_id', '').strip()
+    new_quantity_str = request.form.get('quantity', '').strip()
+    new_unit = request.form.get('unit', '').strip()
+    new_unit_price_str = request.form.get('unit_price', '').strip()
+    new_notes = request.form.get('notes', '').strip()
+
+    new_quantity = float(new_quantity_str) if new_quantity_str else None
+    new_unit_price = float(new_unit_price_str) if new_unit_price_str else None
+
+    conn = get_db()
+    c = conn.cursor()
+
+    updated = 0
+    for import_id in ids:
+        # Lay thong tin cu
+        c.execute('SELECT quantity, unit_price, material_id, date FROM imports WHERE id = ?', (import_id,))
+        old = c.fetchone()
+        if not old:
+            continue
+
+        old_qty = float(old['quantity'] or 0)
+        old_price = float(old['unit_price'] or 0)
+        old_mat_id = old['material_id']
+        old_month = old['date'][:7]
+
+        # Xay dung cau update dong
+        fields = []
+        params = []
+
+        if new_date:
+            fields.append('date = ?')
+            params.append(new_date)
+            # Neu doi ngay -> doi thang
+            new_month = new_date[:7]
+        else:
+            new_month = old_month
+
+        if new_supplier_id:
+            fields.append('supplier_id = ?')
+            params.append(new_supplier_id)
+
+        if new_material_id:
+            fields.append('material_id = ?')
+            params.append(new_material_id)
+
+        if new_quantity is not None:
+            fields.append('quantity = ?')
+            params.append(new_quantity)
+
+        if new_unit:
+            fields.append('unit = ?')
+            params.append(new_unit)
+
+        if new_unit_price is not None:
+            fields.append('unit_price = ?')
+            params.append(new_unit_price)
+
+        if new_notes:
+            fields.append('notes = ?')
+            params.append(new_notes)
+
+        # Tinh lai thanh tien
+        final_qty = new_quantity if new_quantity is not None else old_qty
+        final_price = new_unit_price if new_unit_price is not None else old_price
+        fields.append('total_price = ?')
+        params.append(final_qty * final_price)
+
+        if not fields:
+            continue
+
+        params.append(import_id)
+        sql = 'UPDATE imports SET ' + ', '.join(fields) + ' WHERE id = ?'
+        c.execute(sql, params)
+        updated += 1
+
+        # Cap nhat ton kho thang cu (tru qty cu)
+        if old_mat_id and old_month == month:
+            c.execute('SELECT id, opening_stock, import_qty, closing_stock FROM inventory WHERE month = ? AND material_id = ?',
+                (old_month, old_mat_id))
+            inv = c.fetchone()
+            if inv:
+                adj_qty = final_qty - old_qty
+                new_imp = float(inv['import_qty'] or 0) + adj_qty
+                new_close = float(inv['opening_stock'] or 0) + new_imp
+                c.execute('UPDATE inventory SET import_qty=?, closing_stock=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+                    (new_imp, new_close, inv['id']))
+
+    conn.commit()
+    conn.close()
+    flash(f'Da cap nhat {updated} phieu!', 'success')
+    return redirect(url_for('import_page', month=month))
 
 
 # Export Excel phan Nhap
