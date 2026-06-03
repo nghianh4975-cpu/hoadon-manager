@@ -73,8 +73,8 @@
                         <label class="form-label mb-0 small text-muted">So cot:</label>
                         <select class="form-select form-select-sm" style="width:auto" id="numCols" onchange="rebuildTable()">
                             <option value="3">3 cot (Ten | SL | DG)</option>
-                            <option value="4" selected>4 cot (Ten | SL | DV | DG)</option>
-                            <option value="5">5 cot (Ten | SL | DV | DG | GC)</option>
+                            <option value="4">4 cot (Ten | SL | DV | DG)</option>
+                            <option value="5" selected>5 cot (Ten | SL | DV | DG | Tong)</option>
                         </select>
                     </div>
                 </div>
@@ -339,7 +339,7 @@ BASE_GROUP[{{ grp.id }}] = { total: {{ grp.total_amount }}, count: {{ grp.count 
             { name: 'So Luong', attr: 'qty', type: 'number', placeholder: '0', width: '90px', align: 'text-end' },
             { name: 'Don Vi', attr: 'unit', type: 'text', placeholder: 'kg, cai...', width: '100px', align: '' },
             { name: 'Don Gia', attr: 'price', type: 'number', placeholder: '0', width: '130px', align: 'text-end' },
-            { name: 'Ghi Chu', attr: 'note', type: 'text', placeholder: 'Ghi chu...', width: '', align: '' }
+            { name: 'Thanh Tien', attr: 'note', type: 'number', placeholder: '(tu tinh)', width: '130px', align: 'text-end' }
         ];
         return cols.slice(0, n);
     }
@@ -448,11 +448,6 @@ BASE_GROUP[{{ grp.id }}] = { total: {{ grp.total_amount }}, count: {{ grp.count 
             var rowEl = document.getElementById('group-row-' + gidNum);
             if (rowEl) {
                 rowEl.classList.remove('highlight', 'updated');
-                var isNew = !groupTotals[gidNum];
-                if (isNew) {
-                    if (amtEl) amtEl.textContent = formatMoney(BASE_GROUP[gidNum].total);
-                    if (cntEl) cntEl.textContent = BASE_GROUP[gidNum].count;
-                }
             }
         });
 
@@ -464,12 +459,12 @@ BASE_GROUP[{{ grp.id }}] = { total: {{ grp.total_amount }}, count: {{ grp.count 
             var amtEl = document.getElementById('group-amount-' + gidNum);
             var cntEl = document.getElementById('group-count-' + gidNum);
 
-            if (!BASE_GROUP[gidNum]) {
-                BASE_GROUP[gidNum] = { total: 0, count: 0 };
-            }
+            // Lay base tu BASE_GROUP, mac dinh 0 neu chua co
+            var baseTotal = BASE_GROUP[gidNum] ? BASE_GROUP[gidNum].total : 0;
+            var baseCount = BASE_GROUP[gidNum] ? BASE_GROUP[gidNum].count : 0;
 
-            var newTotal = BASE_GROUP[gidNum].total + data.amount;
-            var newCount = BASE_GROUP[gidNum].count + data.count;
+            var newTotal = baseTotal + data.amount;
+            var newCount = baseCount + data.count;
 
             if (rowEl) rowEl.classList.add('updated');
             if (amtEl) amtEl.textContent = formatMoney(newTotal);
@@ -574,50 +569,38 @@ BASE_GROUP[{{ grp.id }}] = { total: {{ grp.total_amount }}, count: {{ grp.count 
             }
 
             // Gan qty, price, unit dua vao vi tri
-            // Dinh dang: Ten | SoLuong | DonVi | DonGia | GhiChu
-            // numVals chua cac gia tri so thuc (khong tinh tien VND)
+            // Dinh dang 5 cot: Ten | SoLuong | DonVi | DonGia | ThanhTien
+            // numVals chua cac gia tri so thuc (don vi text "KG" parse ra 0 nen khong nam trong numVals)
+            row.qty = 0;
+            row.price = 0;
+            row.unit = '';
+
             if (numVals.length === 1) {
                 // Chi co 1 so: xem la don gia
                 row.price = numVals[0].val;
-            } else if (numVals.length >= 2) {
-                // Lay so dau lam so luong (thuong < 1000)
-                // lay so cuoi lam don gia (thuong > 1000)
-                var qtyCandidate = numVals[0];
-                var priceCandidate = numVals[numVals.length - 1];
-
-                // Neu so dau > 1000 thi co the la don gia -> doi cho
-                if (numVals.length >= 3 && numVals[0].val > 1000) {
-                    // Co the: [DonGia, SoLuong, ...] -> lay so lon nhat la don gia
-                    // Tim so lon nhat lam don gia, so be nhat lam so luong
-                    var sorted = numVals.slice().sort(function(a, b) { return a.val - b.val; });
-                    row.qty = sorted[0].val;
-                    row.price = sorted[sorted.length - 1].val;
-                } else {
-                    // Dinh dang binh thuong: [SoLuong, ...DonGia]
-                    row.qty = qtyCandidate.val;
-                    row.price = priceCandidate.val;
+            } else if (numVals.length === 2) {
+                // 2 so: [SoLuong, DonGia]
+                row.qty = numVals[0].val;
+                row.price = numVals[1].val;
+            } else if (numVals.length === 3) {
+                // 3 so: [SoLuong, DonGia, ThanhTien]  -> unit nam o giua
+                row.qty = numVals[0].val;
+                row.price = numVals[1].val;
+                // parts[2] la don vi (vi numVals bo qua text)
+                var unitCandidate = parts[2] ? parts[2].trim() : '';
+                var testStr = unitCandidate.replace(/,/g, '.').replace(/\./g, '');
+                if (unitCandidate && !/^-?[\d.,]+$/.test(testStr)) {
+                    row.unit = unitCandidate;
                 }
-
-                // Tim unit: phan text nam giua SL va Gia, khong phai so
-                // Format: Ten | SL | DonVi | Gia  (unit = phan giua)
-                row.unit = '';
-                if (numVals.length >= 2) {
-                    var qtyVal = numVals[0].val;
-                    var priceVal = numVals[numVals.length - 1].val;
-                    for (var pi2 = 1; pi2 < parts.length - 1; pi2++) {
-                        var partTrimmed = parts[pi2].trim().replace(/\s*VND\s*$/i, '').trim();
-                        if (!partTrimmed) continue;
-                        if (/VND$/i.test(parts[pi2].trim())) continue;
-                        var partVal = parseNum(partTrimmed);
-                        // Tim phan khong phai qty va khong phai price
-                        if (partVal !== qtyVal && partVal !== priceVal) {
-                            var testStr = partTrimmed.replace(/,/g, '.').replace(/\./g, '');
-                            if (!/^-?[\d.,]+$/.test(testStr)) {
-                                row.unit = partTrimmed;
-                                break;
-                            }
-                        }
-                    }
+            } else if (numVals.length >= 4) {
+                // 4+ so: cuoi la thanh tien, truoc cuoi la don gia, tiep la so luong
+                // Don vi nam o giua (parts[2])
+                row.qty = numVals[0].val;
+                row.price = numVals[numVals.length - 2].val;
+                var unitCand2 = parts[2] ? parts[2].trim() : '';
+                var testStr2 = unitCand2.replace(/,/g, '.').replace(/\./g, '');
+                if (unitCand2 && !/^-?[\d.,]+$/.test(testStr2)) {
+                    row.unit = unitCand2;
                 }
             }
 

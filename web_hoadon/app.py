@@ -2534,14 +2534,19 @@ def import_batch_edit():
             c.execute('UPDATE imports SET supplier_id=? WHERE id=?', (new_supplier_id, import_id))
             updated += 1
 
-    # Cap nhat nhom hang cho cac nguyen lieu trong phieu
+    # Chi update nhom cho material khi material CHUA CO nhom
     if new_group_id:
         for import_id in ids:
             c.execute('SELECT material_id FROM imports WHERE id = ?', (import_id,))
             row = c.fetchone()
             if row and row['material_id']:
-                c.execute('UPDATE materials SET group_id=? WHERE id=?', (new_group_id, row['material_id']))
-                updated += 1
+                # Chi gan nhom khi material chua co nhom
+                c.execute('SELECT group_id FROM materials WHERE id = ?', (row['material_id'],))
+                mat_row = c.fetchone()
+                mat_group = mat_row['group_id'] if mat_row else None
+                if mat_group is None or mat_group == '':
+                    c.execute('UPDATE materials SET group_id=? WHERE id=?', (new_group_id, row['material_id']))
+                    updated += 1
 
     if not new_supplier_id and not new_group_id:
         flash('Chua co gi de cap nhat!', 'warning')
