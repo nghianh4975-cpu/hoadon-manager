@@ -2518,7 +2518,7 @@ def import_batch():
         no_group_summary=no_group_summary)
 
 
-# Sua nhieu phieu cung luc
+# Sua nhieu phieu cung luc - chi NCC va Nhom Hang
 @app.route('/import/batch-edit', methods=['POST'])
 @login_required
 def import_batch_edit():
@@ -2533,96 +2533,33 @@ def import_batch_edit():
         return redirect(url_for('import_page'))
 
     month = request.form.get('month', datetime.date.today().strftime('%Y-%m'))
-
-    # Lay cac gia tri moi (empty = giu nguyen)
-    new_date = request.form.get('date', '').strip()
     new_supplier_id = request.form.get('supplier_id', '').strip()
-    new_material_id = request.form.get('material_id', '').strip()
-    new_quantity_str = request.form.get('quantity', '').strip()
-    new_unit = request.form.get('unit', '').strip()
-    new_unit_price_str = request.form.get('unit_price', '').strip()
-    new_notes = request.form.get('notes', '').strip()
-
-    new_quantity = float(new_quantity_str) if new_quantity_str else None
-    new_unit_price = float(new_unit_price_str) if new_unit_price_str else None
+    new_group_id = request.form.get('group_id', '').strip()
 
     conn = get_db()
     c = conn.cursor()
 
     updated = 0
-    for import_id in ids:
-        # Lay thong tin cu
-        c.execute('SELECT quantity, unit_price, material_id, date FROM imports WHERE id = ?', (import_id,))
-        old = c.fetchone()
-        if not old:
-            continue
 
-        old_qty = float(old['quantity'] or 0)
-        old_price = float(old['unit_price'] or 0)
-        old_mat_id = old['material_id']
-        old_month = old['date'][:7]
+    # Cap nhat NCC cho cac phieu
+    if new_supplier_id:
+        for import_id in ids:
+            c.execute('UPDATE imports SET supplier_id=? WHERE id=?', (new_supplier_id, import_id))
+            updated += 1
 
-        # Xay dung cau update dong
-        fields = []
-        params = []
+    # Cap nhat nhom hang cho cac nguyen lieu trong phieu
+    if new_group_id:
+        for import_id in ids:
+            c.execute('SELECT material_id FROM imports WHERE id = ?', (import_id,))
+            row = c.fetchone()
+            if row and row['material_id']:
+                c.execute('UPDATE materials SET group_id=? WHERE id=?', (new_group_id, row['material_id']))
+                updated += 1
 
-        if new_date:
-            fields.append('date = ?')
-            params.append(new_date)
-            # Neu doi ngay -> doi thang
-            new_month = new_date[:7]
-        else:
-            new_month = old_month
-
-        if new_supplier_id:
-            fields.append('supplier_id = ?')
-            params.append(new_supplier_id)
-
-        if new_material_id:
-            fields.append('material_id = ?')
-            params.append(new_material_id)
-
-        if new_quantity is not None:
-            fields.append('quantity = ?')
-            params.append(new_quantity)
-
-        if new_unit:
-            fields.append('unit = ?')
-            params.append(new_unit)
-
-        if new_unit_price is not None:
-            fields.append('unit_price = ?')
-            params.append(new_unit_price)
-
-        if new_notes:
-            fields.append('notes = ?')
-            params.append(new_notes)
-
-        # Tinh lai thanh tien
-        final_qty = new_quantity if new_quantity is not None else old_qty
-        final_price = new_unit_price if new_unit_price is not None else old_price
-        fields.append('total_price = ?')
-        params.append(final_qty * final_price)
-
-        if not fields:
-            continue
-
-        params.append(import_id)
-        sql = 'UPDATE imports SET ' + ', '.join(fields) + ' WHERE id = ?'
-        c.execute(sql, params)
-        updated += 1
-
-        # Cap nhat ton kho thang cu (tru qty cu)
-        if old_mat_id and old_month == month:
-            c.execute('SELECT id, opening_stock, import_qty, closing_stock FROM inventory WHERE month = ? AND material_id = ?',
-                (old_month, old_mat_id))
-            inv = c.fetchone()
-            if inv:
-                adj_qty = final_qty - old_qty
-                new_imp = float(inv['import_qty'] or 0) + adj_qty
-                new_close = float(inv['opening_stock'] or 0) + new_imp
-                c.execute('UPDATE inventory SET import_qty=?, closing_stock=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
-                    (new_imp, new_close, inv['id']))
+    if not new_supplier_id and not new_group_id:
+        flash('Chua co gi de cap nhat!', 'warning')
+        conn.close()
+        return redirect(url_for('import_page', month=month))
 
     conn.commit()
     conn.close()

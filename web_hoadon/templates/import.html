@@ -427,13 +427,8 @@
                 <input type="hidden" name="month" value="{{ month }}">
                 <input type="hidden" name="edit_ids" id="batchEditIds">
                 <div class="modal-body">
-                    <p class="text-muted small mb-3">Chi nhung truong duoc dien se duoc cap nhat cho tat ca phieu da chon.</p>
-                    <div class="row g-2 mb-2">
-                        <div class="col-md-4">
-                            <label class="form-label small">Ngay moi</label>
-                            <input type="date" name="date" id="batchDate" class="form-control">
-                        </div>
-                        <div class="col-md-4">
+                    <div class="row g-2">
+                        <div class="col-md-6">
                             <label class="form-label small">Nha Cung Cap moi</label>
                             <select name="supplier_id" id="batchSupplier" class="form-select">
                                 <option value="">-- Giu nguyen --</option>
@@ -442,41 +437,15 @@
                                 {% endfor %}
                             </select>
                         </div>
-                        <div class="col-md-4">
-                            <label class="form-label small">Nguyen Lieu moi</label>
-                            <select name="material_id" id="batchMaterial" class="form-select">
+                        <div class="col-md-6">
+                            <label class="form-label small">Nhom Hang moi</label>
+                            <select name="group_id" id="batchGroup" class="form-select">
                                 <option value="">-- Giu nguyen --</option>
-                                {% for mat in materials %}
-                                <option value="{{ mat.id }}">{{ mat.name }}</option>
+                                {% for grp in groups %}
+                                <option value="{{ grp.id }}">{{ grp.name }}</option>
                                 {% endfor %}
                             </select>
                         </div>
-                    </div>
-                    <div class="row g-2 mb-2">
-                        <div class="col-md-3">
-                            <label class="form-label small">So Luong moi</label>
-                            <input type="number" step="0.01" name="quantity" id="batchQuantity" class="form-control" placeholder="Giu nguyen">
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label small">Don Vi moi</label>
-                            <input type="text" name="unit" id="batchUnit" class="form-control" placeholder="Giu nguyen" list="unitSuggestionsBE">
-                            <datalist id="unitSuggestionsBE">
-                                <option value="kg"><option value="gam"><option value="cai">
-                                <option value="chiec"><option value="goi"><option value="chai">
-                                <option value="hop"><option value="bao"><option value="lit">
-                            </datalist>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label small">Don Gia moi</label>
-                            <input type="number" step="1000" name="unit_price" id="batchUnitPrice" class="form-control" placeholder="Giu nguyen">
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label small">Ghi Chu moi</label>
-                            <input type="text" name="notes" id="batchNotes" class="form-control" placeholder="Giu nguyen">
-                        </div>
-                    </div>
-                    <div class="alert alert-info small mb-0">
-                        <i class="bi bi-info-circle"></i> Thanh tien = So luong x Don gia se duoc tu dong tinh lai.
                     </div>
                 </div>
                 <div class="modal-footer">
