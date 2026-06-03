@@ -33,9 +33,9 @@
                         <label class="form-label small text-muted">So cot trong text:</label>
                         <select class="form-select form-select-sm" id="pasteNumCols">
                             <option value="2">2 cot (Ten | Don gia)</option>
-                            <option value="3" selected>3 cot (Ten | So luong | Don gia)</option>
-                            <option value="4">4 cot (Ten | So luong | Don vi | Don gia)</option>
-                            <option value="5">5 cot (Ten | So luong | Don vi | Don gia | Ghi chu)</option>
+                            <option value="3">3 cot (Ten | SL | DG)</option>
+                            <option value="4" selected>4 cot (Ten | SL | Don vi | DG)</option>
+                            <option value="5">5 cot (Ten | SL | Don vi | DG | Tong)</option>
                         </select>
                     </div>
                     <div class="col-md-8">
@@ -255,6 +255,8 @@ BASE_GROUP[0] = { total: 0, count: 0 };
 {% for grp in group_summary %}
 BASE_GROUP[{{ grp.id }}] = { total: {{ grp.total_amount }}, count: {{ grp.count }} };
 {% endfor %}
+// SERVER_BASE la ban chinh thuc tu server, khong bi thay doi
+var SERVER_BASE = JSON.parse(JSON.stringify(BASE_GROUP));
 
 (function() {
     var itemCount = 0;
@@ -339,7 +341,7 @@ BASE_GROUP[{{ grp.id }}] = { total: {{ grp.total_amount }}, count: {{ grp.count 
             { name: 'So Luong', attr: 'qty', type: 'number', placeholder: '0', width: '90px', align: 'text-end' },
             { name: 'Don Vi', attr: 'unit', type: 'text', placeholder: 'kg, cai...', width: '100px', align: '' },
             { name: 'Don Gia', attr: 'price', type: 'number', placeholder: '0', width: '130px', align: 'text-end' },
-            { name: 'Thanh Tien', attr: 'note', type: 'number', placeholder: '(tu tinh)', width: '130px', align: 'text-end' }
+            { name: 'Ghi Chu', attr: 'note', type: 'text', placeholder: '(tu tinh)', width: '130px', align: '' }
         ];
         return cols.slice(0, n);
     }
@@ -368,7 +370,7 @@ BASE_GROUP[{{ grp.id }}] = { total: {{ grp.total_amount }}, count: {{ grp.count 
     function addRow(count, data) {
         count = count || 1;
         var n = parseInt(document.getElementById('numCols').value);
-        var cols = getCols(n);
+        var cols = getCols(n);  // chi lay n cot theo so cot hien tai
         var tbody = document.getElementById('entryBody');
 
         for (var c = 0; c < count; c++) {
@@ -414,7 +416,10 @@ BASE_GROUP[{{ grp.id }}] = { total: {{ grp.total_amount }}, count: {{ grp.count 
         document.querySelectorAll('.item-row').forEach(function(row) {
             var nameInput = row.querySelector('input[name^="name_"]');
             var qty = parseNum(row.querySelector('input[name^="qty_"]').value);
-            var price = parseNum(row.querySelector('input[name^="price_"]').value);
+            // Lay don gia: uu tien cot price (cot 4), neu rong thi lay cot note (cot 5)
+            var priceEl = row.querySelector('input[name^="price_"]');
+            var noteEl = row.querySelector('input[name^="note_"]');
+            var price = parseNum(priceEl && priceEl.value ? priceEl.value : (noteEl ? noteEl.value : ''));
             var sub = qty * price;
             row.querySelector('.row-total').textContent = formatMoney(sub);
             total += sub;
@@ -440,35 +445,43 @@ BASE_GROUP[{{ grp.id }}] = { total: {{ grp.total_amount }}, count: {{ grp.count 
     }
 
     function updateGroupSummary(groupTotals) {
-        // Reset all rows to BASE
-        Object.keys(BASE_GROUP).forEach(function(gid) {
+        // ALWAYS reset BASE_GROUP ve du lieu server goc (khong bi mutate boi lan goi truoc)
+        Object.keys(SERVER_BASE).forEach(function(gid) {
+            BASE_GROUP[gid] = JSON.parse(JSON.stringify(SERVER_BASE[gid]));
+        });
+
+        // Hien thi gia tri cua SERVER_BASE
+        Object.keys(SERVER_BASE).forEach(function(gid) {
             var gidNum = parseInt(gid);
             var amtEl = document.getElementById('group-amount-' + gidNum);
             var cntEl = document.getElementById('group-count-' + gidNum);
-            var rowEl = document.getElementById('group-row-' + gidNum);
-            if (rowEl) {
-                rowEl.classList.remove('highlight', 'updated');
-            }
+            if (amtEl) amtEl.textContent = formatMoney(BASE_GROUP[gidNum].total);
+            if (cntEl) cntEl.textContent = BASE_GROUP[gidNum].count;
         });
 
-        // Apply new amounts
+        // Cong them gia tri cua cac dong hien tai
         Object.keys(groupTotals).forEach(function(gid) {
             var gidNum = parseInt(gid);
             var data = groupTotals[gidNum];
-            var rowEl = document.getElementById('group-row-' + gidNum);
             var amtEl = document.getElementById('group-amount-' + gidNum);
             var cntEl = document.getElementById('group-count-' + gidNum);
+            var rowEl = document.getElementById('group-row-' + gidNum);
 
-            // Lay base tu BASE_GROUP, mac dinh 0 neu chua co
-            var baseTotal = BASE_GROUP[gidNum] ? BASE_GROUP[gidNum].total : 0;
-            var baseCount = BASE_GROUP[gidNum] ? BASE_GROUP[gidNum].count : 0;
+            // Dam bao BASE_GROUP co gia tri goc cho nhom nay
+            if (!BASE_GROUP[gidNum]) {
+                BASE_GROUP[gidNum] = { total: 0, count: 0 };
+            }
 
-            var newTotal = baseTotal + data.amount;
-            var newCount = baseCount + data.count;
+            var newTotal = BASE_GROUP[gidNum].total + data.amount;
+            var newCount = BASE_GROUP[gidNum].count + data.count;
 
             if (rowEl) rowEl.classList.add('updated');
             if (amtEl) amtEl.textContent = formatMoney(newTotal);
             if (cntEl) cntEl.textContent = newCount;
+
+            // Cap nhat BASE_GROUP de lan goi tiep theo co base dung
+            BASE_GROUP[gidNum].total = newTotal;
+            BASE_GROUP[gidNum].count = newCount;
         });
     }
 
@@ -579,14 +592,23 @@ BASE_GROUP[{{ grp.id }}] = { total: {{ grp.total_amount }}, count: {{ grp.count 
                 // Chi co 1 so: xem la don gia
                 row.price = numVals[0].val;
             } else if (numVals.length === 2) {
-                // 2 so: [SoLuong, DonGia]
+                // 2 so: [SoLuong, DonGia]  -> tim unit o giua parts
                 row.qty = numVals[0].val;
                 row.price = numVals[1].val;
+                // Tim don vi: phan text giua parts[1] (SL) va parts[3] (DG)
+                for (var pi = 1; pi < parts.length - 1; pi++) {
+                    var pc = parts[pi].trim();
+                    if (!pc) continue;
+                    var testRaw = pc.replace(/,/g, '.').replace(/\./g, '');
+                    if (!/^-?[\d.,]+$/.test(testRaw)) {
+                        row.unit = pc;
+                        break;
+                    }
+                }
             } else if (numVals.length === 3) {
-                // 3 so: [SoLuong, DonGia, ThanhTien]  -> unit nam o giua
+                // 3 so: [SoLuong, DonGia, ThanhTien]  -> unit o parts[2] (index 2)
                 row.qty = numVals[0].val;
                 row.price = numVals[1].val;
-                // parts[2] la don vi (vi numVals bo qua text)
                 var unitCandidate = parts[2] ? parts[2].trim() : '';
                 var testStr = unitCandidate.replace(/,/g, '.').replace(/\./g, '');
                 if (unitCandidate && !/^-?[\d.,]+$/.test(testStr)) {
@@ -594,7 +616,6 @@ BASE_GROUP[{{ grp.id }}] = { total: {{ grp.total_amount }}, count: {{ grp.count 
                 }
             } else if (numVals.length >= 4) {
                 // 4+ so: cuoi la thanh tien, truoc cuoi la don gia, tiep la so luong
-                // Don vi nam o giua (parts[2])
                 row.qty = numVals[0].val;
                 row.price = numVals[numVals.length - 2].val;
                 var unitCand2 = parts[2] ? parts[2].trim() : '';
@@ -615,6 +636,10 @@ BASE_GROUP[{{ grp.id }}] = { total: {{ grp.total_amount }}, count: {{ grp.count 
             return;
         }
 
+        // Dong bo: dat numCols = so cot paste, roi rebuild de header khop
+        document.getElementById('numCols').value = numCols;
+        rebuildTable();
+        // rebuildTable() da goi addRow() 1 lan tao dong trong, bo qua
         document.getElementById('entryBody').innerHTML = '';
         itemCount = 0;
         parsedRows.forEach(function(data) { addRow(1, [data]); });

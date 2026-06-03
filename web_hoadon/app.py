@@ -2389,7 +2389,10 @@ def import_batch():
                     continue
                 qty = float(request.form.get('qty_' + idx, 0) or 0)
                 unit = request.form.get('unit_' + idx, '').strip()
+                # Lay don gia: uu tien cot price (cot 4), neu rong thi lay cot note (cot 5)
                 price = float(request.form.get('price_' + idx, 0) or 0)
+                if not price:
+                    price = float(request.form.get('note_' + idx, 0) or 0)
                 total = qty * price
 
                 # Lay nhom cua dong nay, hoac mac dinh tu global
