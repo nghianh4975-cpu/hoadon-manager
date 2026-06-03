@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Quet Anh{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-image"></i> Quet Anh Hoa Don (OCR)</h2>
+    <a href="{{ url_for('dashboard') }}" class="btn btn-secondary"><i class="bi bi-arrow-left"></i> Quay lai</a>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header bg-white"><h5 class="mb-0"><i class="bi bi-info-circle"></i> Huong dan</h5></div>
+    <div class="card-body">
+        <p>Upload anh hoa don, he thong se doc text tu anh va tu dong tao hoa don.</p>
+        <p class="text-muted small">Luu y: Can cai dat <code>pytesseract</code> va <code>opencv</code> de OCR hoat dong.</p>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <form method="POST" enctype="multipart/form-data">
+            <div class="mb-3">
+                <label class="form-label">Chon anh hoa don</label>
+                <input type="file" class="form-control" name="invoice_image" accept="image/*" required>
+            </div>
+            <div class="d-flex justify-content-between">
+                <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">Huy</a>
+                <button type="submit" class="btn btn-primary"><i class="bi bi-scan"></i> Quet Anh</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

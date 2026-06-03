@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Trang Chu{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h2><i class="bi bi-house"></i> Trang Chu</h2>
+    <p class="mb-0">Chao muon {{ session.username }}! ({{ session.role }})</p>
+</div>
+
+<div class="row">
+    <div class="col-md-3">
+        <div class="card stat-card">
+            <div class="text-muted small">Hoa don hom nay</div>
+            <div class="stat-value">{{ today_count }}</div>
+            <small class="text-success">{{ "{:,.0f}".format(today_total) }} VND</small>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card success">
+            <div class="text-muted small">Hoa don thang nay</div>
+            <div class="stat-value">{{ month_count }}</div>
+            <small class="text-success">{{ "{:,.0f}".format(month_total) }} VND</small>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card">
+            <div class="text-muted small">Doanh thu thang</div>
+            <div class="stat-value text-success">{{ "{:,.0f}".format(month_rev) }}</div>
+            <small>VND</small>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card {% if profit >= 0 %}success{% else %}danger{% endif %}">
+            <div class="text-muted small">Loi nhuan thang</div>
+            <div class="stat-value">{{ "{:,.0f}".format(profit) }}</div>
+            <small>VND</small>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header bg-white"><h5 class="mb-0">Hoa don gan day</h5></div>
+            <div class="card-body p-0">
+                {% if recent_invoices %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead><tr><th>So HD</th><th>Ngay</th><th>Cua Hang</th><th>Tong</th><th></th></tr></thead>
+                        <tbody>
+                            {% for inv in recent_invoices %}
+                            <tr>
+                                <td><strong>{{ inv.invoice_number }}</strong></td>
+                                <td>{{ inv.date }}</td>
+                                <td>{{ inv.store_name or '-' }}</td>
+                                <td class="text-success fw-bold">{{ "{:,.0f}".format(inv.total) }} VND</td>
+                                <td><a href="{{ url_for('view_invoice', invoice_id=inv.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted text-center p-4 mb-0">Chua co hoa don nao.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-3">
+        <a href="{{ url_for('new_invoice') }}" class="btn btn-primary w-100 py-3"><i class="bi bi-plus-circle"></i> Tao Hoa Don</a>
+    </div>
+    <div class="col-md-3">
+        <a href="{{ url_for('import_page') }}" class="btn btn-outline-primary w-100 py-3"><i class="bi bi-box-seam"></i> Nhap Hang</a>
+    </div>
+    <div class="col-md-3">
+        <a href="{{ url_for('import_text') }}" class="btn btn-outline-primary w-100 py-3"><i class="bi bi-input-cursor-text"></i> Nhap Text Xuat Excel</a>
+    </div>
+    <div class="col-md-3">
+        <a href="{{ url_for('scan_image') }}" class="btn btn-outline-primary w-100 py-3"><i class="bi bi-image"></i> Quet Anh OCR</a>
+    </div>
+</div>
+
+<div class="row mt-3">
+    <div class="col-md-12">
+        <div class="alert alert-warning d-flex align-items-center" role="alert">
+            <i class="bi bi-exclamation-triangle me-2"></i>
+            <div>
+                <strong>Luu y:</strong> Nen tai backup dinh ky de tranh mat du lieu.
+                <a href="{{ url_for('backup_data') }}" class="btn btn-sm btn-warning ms-2">
+                    <i class="bi bi-download"></i> Tai Backup
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

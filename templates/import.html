@@ -1,0 +1,533 @@
+{% extends "base.html" %}
+{% block title %}Nhap Hang{% endblock %}
+{% block content %}
+<style>
+    .ncc-card { border-left: 4px solid #107C10; }
+    .tonkho-card { border-left: 4px solid #FFC107; }
+    .import-detail-card { border-left: 4px solid #0078D4; }
+    .group-card { border-left: 4px solid #6c757d; }
+    .month-nav { display: flex; align-items: center; gap: 8px; }
+    .clickable-row { cursor: pointer; }
+    .clickable-row:hover { background-color: #f0f7ff !important; }
+</style>
+
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h2><i class="bi bi-box-seam"></i> Nhap Hang</h2>
+        <p class="mb-0">Quan ly nhap hang, ton kho va cong no NCC</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('import_enter') }}" class="btn btn-success btn-sm"><i class="bi bi-plus-circle"></i> Nhap NL</a>
+        <a href="{{ url_for('groups_page') }}" class="btn btn-outline-light btn-sm"><i class="bi bi-collection"></i> Nhom Hang</a>
+        <a href="{{ url_for('suppliers_page') }}" class="btn btn-outline-light btn-sm"><i class="bi bi-building"></i> NCC</a>
+        <a href="{{ url_for('materials_page') }}" class="btn btn-outline-light btn-sm"><i class="bi bi-box"></i> Nguyen Lieu</a>
+        <a href="{{ url_for('import_batch') }}" class="btn btn-outline-light btn-sm"><i class="bi bi-upload"></i> Nhap Text</a>
+        <a href="{{ url_for('export_import', month=month) }}" class="btn btn-warning btn-sm"><i class="bi bi-file-excel"></i> Export Excel</a>
+    </div>
+</div>
+
+{# ---- Chon thang ---- #}
+<div class="card mb-3">
+    <div class="card-body d-flex align-items-center month-nav">
+        <a href="{{ url_for('import_page', month=prev_month_url) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-chevron-left"></i></a>
+        <input type="month" class="form-control" style="width:auto" value="{{ month }}" onchange="window.location.href='{{ url_for('import_page') }}?month=' + this.value">
+        <a href="{{ url_for('import_page', month=next_month_url) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-chevron-right"></i></a>
+        <span class="ms-3 text-muted">Thang {{ month }}</span>
+    </div>
+</div>
+
+{# ---- Bang 1: TONG HOP NCC ---- #}
+<div class="row">
+    <div class="col-md-5">
+        <div class="card mb-3">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-building text-success"></i> Tong Hop Cong No NCC</h5>
+                <a href="{{ url_for('suppliers_page') }}" class="btn btn-sm btn-outline-success"><i class="bi bi-plus-circle"></i> Them NCC</a>
+            </div>
+            <div class="card-body p-0">
+                {% if ncc_summary %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Nha Cung Cap</th>
+                                <th class="text-end">Tong No</th>
+                                <th class="text-end">Da Thanh Toan</th>
+                                <th class="text-end">Con Lai</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for ncc in ncc_summary %}
+                            <tr class="clickable-row" onclick="window.location='{{ url_for('supplier_detail', supplier_id=ncc.id) }}'">
+                                <td>
+                                    <i class="bi bi-chevron-right text-success"></i>
+                                    <strong>{{ ncc.name }}</strong>
+                                </td>
+                                <td class="text-end"><span class="text-dark">{{ "{:,.0f}".format(ncc.total_debt) }} VND</span></td>
+                                <td class="text-end"><span class="text-success">{{ "{:,.0f}".format(ncc.total_paid) }} VND</span></td>
+                                <td class="text-end">
+                                    {% if ncc.remaining > 0 %}
+                                    <span class="text-danger fw-bold">{{ "{:,.0f}".format(ncc.remaining) }} VND</span>
+                                    {% else %}
+                                    <span class="text-success">Da tra het</span>
+                                    {% endif %}
+                                </td>
+                                <td><a href="{{ url_for('supplier_detail', supplier_id=ncc.id) }}" class="btn btn-sm btn-outline-success" onclick="event.stopPropagation()"><i class="bi bi-eye"></i></a></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot>
+                            <tr class="table-success">
+                                <td><strong>TONG CONG NO NCC</strong></td>
+                                <td class="text-end">
+                                    <strong class="text-dark">
+                                        {{ "{:,.0f}".format(ncc_summary|sum(attribute='total_debt')) }} VND
+                                    </strong>
+                                </td>
+                                <td class="text-end">
+                                    <strong class="text-success">
+                                        {{ "{:,.0f}".format(ncc_summary|sum(attribute='total_paid')) }} VND
+                                    </strong>
+                                </td>
+                                <td class="text-end">
+                                    <strong class="text-danger">
+                                        {{ "{:,.0f}".format(ncc_summary|sum(attribute='remaining')) }} VND
+                                    </strong>
+                                </td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted text-center p-4 mb-0">Chua co du lieu nhap nao trong thang nay.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    {# ---- Bang 2: NHOM HANG ---- #}
+    <div class="col-md-7">
+        <div class="card group-card mb-3">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-collection text-secondary"></i> Nhom Hang - Tong Hop Theo Nhom</h5>
+                <a href="{{ url_for('groups_page') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-plus-circle"></i> Them Nhom</a>
+            </div>
+            <div class="card-body p-0">
+                {% if group_summary %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="table-secondary">
+                            <tr>
+                                <th>Nhom Hang</th>
+                                <th class="text-end">Tong Nhap</th>
+                                <th class="text-end">So Phieu</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for grp in group_summary %}
+                            <tr class="clickable-row" onclick="window.location='{{ url_for('group_detail', group_id=grp.id) }}'">
+                                <td>
+                                    <span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:{{ grp.color or '#6c757d' }};vertical-align:middle;margin-right:6px"></span>
+                                    <strong>{{ grp.name }}</strong>
+                                </td>
+                                <td class="text-end text-danger fw-bold">{{ "{:,.0f}".format(grp.total_amount) }} VND</td>
+                                <td class="text-end">{{ grp.count }}</td>
+                                <td><a href="{{ url_for('group_detail', group_id=grp.id) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-eye"></i></a></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted text-center p-4 mb-0">
+                    Chua co nhom hang. <a href="{{ url_for('groups_page') }}">Them nhom</a> de phan loai hang hoa.
+                </p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ---- Bang 3: CHI TIET NHAP HANG ---- #}
+<div class="card import-detail-card">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-list-ol text-primary"></i> Chi Tiet Nhap Hang</h5>
+        <div class="d-flex gap-2 align-items-center">
+            <button type="button" class="btn btn-sm btn-outline-primary" onclick="toggleAllChecks()">
+                <i class="bi bi-check2-square"></i> Chon Tat Ca
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-warning" id="editSelectedBtn" style="display:none"
+                onclick="openBatchEditModal()">
+                <i class="bi bi-pencil-square"></i> Sua Da Chon
+            </button>
+            <button type="button" class="btn btn-sm btn-danger" id="deleteSelectedBtn" style="display:none"
+                onclick="doBatchDelete()">
+                <i class="bi bi-trash"></i> Xoa Da Chon (<span id="selectedCount">0</span>)
+            </button>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        {# Form them phieu nhap #}
+        <form method="POST" action="{{ url_for('import_add') }}" class="row g-2 p-3 border-bottom bg-light">
+            <div class="col-md-2">
+                <input type="date" name="date" class="form-control" value="{{ today_str }}" required>
+            </div>
+            <div class="col-md-2">
+                <select name="supplier_id" class="form-select">
+                    <option value="">-- NCC --</option>
+                    {% for sup in suppliers %}
+                    <option value="{{ sup.id }}">{{ sup.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select name="material_id" class="form-select" required>
+                    <option value="">-- Nguyen lieu --</option>
+                    {% for mat in materials %}
+                    <option value="{{ mat.id }}" data-group="{{ mat.group_id or '' }}">{{ mat.name }} ({{ mat.unit or 'dv' }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-1">
+                <input type="text" name="unit" class="form-control" placeholder="Don vi" list="unitSuggestions">
+                <datalist id="unitSuggestions">
+                    <option value="kg">
+                    <option value="gam">
+                    <option value="cai">
+                    <option value="chiec">
+                    <option value="goi">
+                    <option value="chai">
+                    <option value="hop">
+                    <option value="bao">
+                    <option value="lit">
+                </datalist>
+            </div>
+            <div class="col-md-1">
+                <input type="number" step="1000" name="quantity" class="form-control" placeholder="So luong" required>
+            </div>
+            <div class="col-md-2">
+                <input type="number" step="1000" name="unit_price" class="form-control" placeholder="Don gia" required>
+            </div>
+            <div class="col-md-2">
+                <input type="number" step="1000" name="paid_amount" class="form-control" placeholder="Thanh toan (0=chua tra)">
+            </div>
+            <div class="col-md-1">
+                <button type="submit" class="btn btn-primary w-100"><i class="bi bi-plus-circle"></i> Them</button>
+            </div>
+        </form>
+
+        {% if imports_list %}
+        <form method="POST" action="{{ url_for('import_delete_batch') }}" id="batchDeleteForm" style="display:none">
+            <input type="hidden" name="month" value="{{ month }}">
+            <input type="hidden" name="delete_ids_batch" id="deleteIdsBatch">
+        </form>
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th style="width:40px"><input type="checkbox" id="checkAll" onchange="toggleAllChecks()"></th>
+                        <th>Ngay</th>
+                        <th>NCC</th>
+                        <th>Nguyen Lieu</th>
+                        <th class="text-center">Don Vi</th>
+                        <th class="text-end">So Luong</th>
+                        <th class="text-end">Don Gia</th>
+                        <th class="text-end">Thanh Tien</th>
+                        <th class="text-end">Da TT</th>
+                        <th class="text-end">Con Lai</th>
+                        <th class="text-center">So Lan</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for imp in imports_list %}
+                    <tr data-id="{{ imp.id }}">
+                        <td><input type="checkbox" class="row-check" value="{{ imp.id }}" onchange="updateSelectedCount()"></td>
+                        <td>{{ imp.date }}</td>
+                        <td>
+                            {% if imp.supplier_id %}
+                            <a href="{{ url_for('supplier_detail', supplier_id=imp.supplier_id) }}" class="text-decoration-none">
+                                <i class="bi bi-building text-success"></i> {{ imp.supplier_name or '-' }}
+                            </a>
+                            {% else %}
+                            {{ imp.supplier_name or '-' }}
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if imp.material_id %}
+                            <a href="{{ url_for('material_detail', material_id=imp.material_id) }}" class="text-decoration-none">
+                                <strong>{{ imp.material_name or '-' }}</strong>
+                            </a>
+                            {% else %}
+                            <strong>{{ imp.material_name or '-' }}</strong>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">{{ imp.unit or '-' }}</td>
+                        <td class="text-end">{{ "{:,.2f}".format(imp.quantity) }}</td>
+                        <td class="text-end">{{ "{:,.0f}".format(imp.unit_price) }}</td>
+                        <td class="text-end text-danger fw-bold">{{ "{:,.0f}".format(imp.total_price) }}</td>
+                        <td class="text-end">
+                            {% set imp_paid = imp.paid_amount if imp.paid_amount else 0 %}
+                            {% if imp_paid > 0 %}
+                            <span class="text-success" title="{{ imp.paid_details or '' }}">{{ "{:,.0f}".format(imp_paid) }}</span>
+                            {% else %}
+                            <span class="text-muted">--</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            {% set imp_remaining = (imp.total_price or 0) - (imp.paid_amount or 0) %}
+                            {% if imp_remaining > 0 %}
+                            <span class="text-danger fw-bold">{{ "{:,.0f}".format(imp_remaining) }}</span>
+                            {% else %}
+                            <span class="text-success">OK</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if imp.payment_count and imp.payment_count > 0 %}
+                            <span class="badge bg-success" title="Chi tiet: {{ imp.paid_details or '' }}">{{ imp.payment_count }} lan</span>
+                            {% else %}
+                            <span class="badge bg-secondary">0</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="d-flex gap-1">
+                                <button type="button" class="btn btn-sm btn-outline-warning"
+                                    onclick="openEditModal({{ imp.id }}, '{{ imp.date }}', '{{ imp.supplier_id or '' }}', '{{ imp.material_id or '' }}', {{ imp.quantity }}, {{ imp.unit_price }}, '{{ imp.notes or '' }}', {{ imp.paid_amount or 0 }}, '{{ imp.unit or '' }}')"
+                                    title="Sua phieu">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <form method="POST" action="{{ url_for('import_delete', import_id=imp.id) }}" onsubmit="return confirm('Xoa phieu nay?')">
+                                    <input type="hidden" name="month" value="{{ month }}">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="table-primary">
+                        <td colspan="6" class="text-end"><strong>TONG CONG NHAP HANG:</strong></td>
+                        <td class="text-end">
+                            <strong class="text-danger">
+                                {{ "{:,.0f}".format(imports_list|sum(attribute='total_price')) }} VND
+                            </strong>
+                        </td>
+                        <td class="text-end">
+                            <strong class="text-success">
+                                {{ "{:,.0f}".format(imports_list|sum(attribute='paid_amount') or 0) }} VND
+                            </strong>
+                        </td>
+                        <td class="text-end">
+                            <strong class="text-danger">
+                                {{ "{:,.0f}".format(imports_list|sum(attribute='total_price') - (imports_list|sum(attribute='paid_amount') or 0)) }} VND
+                            </strong>
+                        </td>
+                        <td class="text-center">
+                            <strong>{{ (imports_list|selectattr('payment_count')|sum(attribute='payment_count') or 0) }}</strong>
+                        </td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted text-center p-4 mb-0">Chua co phieu nhap nao trong thang nay.</p>
+        {% endif %}
+    </div>
+</div>
+
+{# ---- MODAL SUA PHIEU NHAP ---- #}
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title"><i class="bi bi-pencil"></i> Sua Phieu Nhap</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('import_update_single') }}">
+                <input type="hidden" name="import_id" id="editImportId">
+                <input type="hidden" name="month" value="{{ month }}">
+                <div class="modal-body">
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-6">
+                            <label class="form-label small">Ngay</label>
+                            <input type="date" name="date" id="editDate" class="form-control" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small">Nha Cung Cap</label>
+                            <select name="supplier_id" id="editSupplier" class="form-select">
+                                <option value="">-- Chon NCC --</option>
+                                {% for sup in suppliers %}
+                                <option value="{{ sup.id }}">{{ sup.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-6">
+                            <label class="form-label small">Nguyen Lieu</label>
+                            <select name="material_id" id="editMaterial" class="form-select" required>
+                                <option value="">-- Chon Nguyen Lieu --</option>
+                                {% for mat in materials %}
+                                <option value="{{ mat.id }}">{{ mat.name }} ({{ mat.unit or 'dv' }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small">Ghi Chu</label>
+                            <input type="text" name="notes" id="editNotes" class="form-control">
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-3">
+                            <label class="form-label small">So Luong</label>
+                            <input type="number" step="0.01" name="quantity" id="editQuantity" class="form-control" required>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small">Don Vi</label>
+                            <input type="text" name="unit" id="editUnit" class="form-control" placeholder="kg, cai..." list="unitSuggestionsEditM">
+                            <datalist id="unitSuggestionsEditM">
+                                <option value="kg"><option value="gam"><option value="cai">
+                                <option value="chiec"><option value="goi"><option value="chai">
+                                <option value="hop"><option value="bao"><option value="lit">
+                            </datalist>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small">Don Gia</label>
+                            <input type="number" step="0.01" name="unit_price" id="editPrice" class="form-control" required>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small">Da Thanh Toan</label>
+                            <input type="number" step="1000" name="paid_amount" id="editPaid" class="form-control" placeholder="0">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Huy</button>
+                    <button type="submit" class="btn btn-warning"><i class="bi bi-check-circle"></i> Luu</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{# ---- MODAL SUA HANG LOAT ---- #}
+<div class="modal fade" id="batchEditModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title"><i class="bi bi-pencil-square"></i> Sua Hang Loat - <span id="batchEditCount">0</span> phieu</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('import_batch_edit') }}" id="batchEditForm">
+                <input type="hidden" name="month" value="{{ month }}">
+                <input type="hidden" name="edit_ids" id="batchEditIds">
+                <div class="modal-body">
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <label class="form-label small">Nha Cung Cap moi</label>
+                            <select name="supplier_id" id="batchSupplier" class="form-select">
+                                <option value="">-- Giu nguyen --</option>
+                                {% for sup in suppliers %}
+                                <option value="{{ sup.id }}">{{ sup.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small">Nhom Hang moi</label>
+                            <select name="group_id" id="batchGroup" class="form-select">
+                                <option value="">-- Giu nguyen --</option>
+                                {% for grp in groups %}
+                                <option value="{{ grp.id }}">{{ grp.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Huy</button>
+                    <button type="submit" class="btn btn-warning"><i class="bi bi-check-circle"></i> Luu Tat Ca</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+    function toggleAllChecks() {
+        var checked = document.getElementById('checkAll').checked;
+        document.querySelectorAll('.row-check').forEach(function(cb) {
+            cb.checked = checked;
+        });
+        updateSelectedCount();
+    }
+
+    function updateSelectedCount() {
+        var count = 0;
+        document.querySelectorAll('.row-check').forEach(function(cb) {
+            if (cb.checked) count++;
+        });
+        document.getElementById('selectedCount').textContent = count;
+        document.getElementById('deleteSelectedBtn').style.display = count > 0 ? '' : 'none';
+        document.getElementById('editSelectedBtn').style.display = count > 0 ? '' : 'none';
+    }
+
+    function openBatchEditModal() {
+        var ids = [];
+        document.querySelectorAll('.row-check:checked').forEach(function(cb) {
+            ids.push(cb.value);
+        });
+        if (ids.length === 0) {
+            alert('Chua chon phieu nao!');
+            return;
+        }
+        document.getElementById('batchEditIds').value = ids.join(',');
+        document.getElementById('batchEditCount').textContent = ids.length;
+        var modal = new bootstrap.Modal(document.getElementById('batchEditModal'));
+        modal.show();
+    }
+
+    function doBatchDelete() {
+        var ids = [];
+        document.querySelectorAll('.row-check:checked').forEach(function(cb) {
+            ids.push(cb.value);
+        });
+        if (ids.length === 0) {
+            alert('Chua chon phieu nao!');
+            return;
+        }
+        if (!confirm('Xoa ' + ids.length + ' phieu da chon?')) return;
+        document.getElementById('deleteIdsBatch').value = ids.join(',');
+        document.getElementById('batchDeleteForm').submit();
+    }
+
+    function openEditModal(id, date, supplierId, materialId, qty, price, notes, paid, unit) {
+        document.getElementById('editImportId').value = id;
+        document.getElementById('editDate').value = date;
+        document.getElementById('editSupplier').value = supplierId;
+        document.getElementById('editMaterial').value = materialId;
+        document.getElementById('editQuantity').value = qty;
+        document.getElementById('editUnit').value = unit || '';
+        document.getElementById('editPrice').value = price;
+        document.getElementById('editNotes').value = notes;
+        document.getElementById('editPaid').value = paid;
+        var modal = new bootstrap.Modal(document.getElementById('editModal'));
+        modal.show();
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        updateSelectedCount();
+    });
+
+    document.querySelectorAll('input[type="date"]').forEach(function(input) {
+        if (!input.value) {
+            input.value = new Date().toISOString().split('T')[0];
+        }
+    });
+</script>
+{% endblock %}
