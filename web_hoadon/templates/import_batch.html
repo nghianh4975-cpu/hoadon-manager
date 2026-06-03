@@ -82,11 +82,11 @@
             <div class="card-body">
                 <form method="POST" id="batchForm">
                     <div class="row mb-3">
-                        <div class="col-md-3">
+                        <div class="col-md-4">
                             <label class="form-label">Ngay nhap</label>
                             <input type="date" name="import_date" class="form-control" value="{{ today_str }}" required>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-4">
                             <label class="form-label">Nha cung cap</label>
                             <select name="supplier_id" class="form-select">
                                 <option value="">-- Chon NCC --</option>
@@ -95,7 +95,7 @@
                                 {% endfor %}
                             </select>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-4">
                             <label class="form-label">Nhom mac dinh <span class="text-muted small">(neu dong khong chon nhom)</span></label>
                             <select name="group_id" class="form-select" id="globalGroupId">
                                 <option value="">-- Khong co nhom --</option>
@@ -103,10 +103,6 @@
                                 <option value="{{ grp.id }}">{{ grp.name }}</option>
                                 {% endfor %}
                             </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Thanh Toan <span class="text-muted small">(0=chua tra)</span></label>
-                            <input type="number" step="1000" name="batch_paid_amount" class="form-control" placeholder="0" value="0">
                         </div>
                     </div>
 
@@ -215,7 +211,7 @@
         <span>Thanh Toan - Tra Tien NCC</span>
     </div>
     <div class="card-body">
-        <form method="POST" action="{{ url_for('import_page') }}">
+        <form method="POST" action="{{ url_for('import_pay') }}">
             <input type="hidden" name="month" value="{{ month }}">
             <div class="row g-2">
                 <div class="col-md-2">

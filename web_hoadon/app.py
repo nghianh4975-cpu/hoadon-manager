@@ -2418,29 +2418,16 @@ def import_batch():
                                   (name, effective_group_id, unit))
                         material_id = c.lastrowid
 
-                # Thanh toan cho batch: mac dinh 0, tinh details
-                paid_amount = float(request.form.get('batch_paid_amount', 0) or 0)
-                payment_count = 0
-                paid_details = ''
-                if paid_amount > 0:
-                    payment_count = 1
-                    today_str_d = datetime.date.today().strftime('%Y-%m-%d')
-                    paid_details = f'{today_str_d}:{int(paid_amount)}'
-
                 if USE_PG:
                     c.execute('''INSERT INTO imports
-                        (date, material_id, supplier_id, quantity, unit, unit_price, total_price,
-                         paid_amount, payment_count, paid_details, created_by)
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
-                        (date, material_id, supplier_id, qty, unit, price, total,
-                         paid_amount, payment_count, paid_details, session['username']))
+                        (date, material_id, supplier_id, quantity, unit, unit_price, total_price, created_by)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s)''',
+                        (date, material_id, supplier_id, qty, unit, price, total, session['username']))
                 else:
                     c.execute('''INSERT INTO imports
-                        (date, material_id, supplier_id, quantity, unit, unit_price, total_price,
-                         paid_amount, payment_count, paid_details, created_by)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?)''',
-                        (date, material_id, supplier_id, qty, unit, price, total,
-                         paid_amount, payment_count, paid_details, session['username']))
+                        (date, material_id, supplier_id, quantity, unit, unit_price, total_price, created_by)
+                        VALUES (?,?,?,?,?,?,?,?)''',
+                        (date, material_id, supplier_id, qty, unit, price, total, session['username']))
 
                 # Cap nhat ton kho
                 c.execute('''SELECT id, opening_stock, import_qty, closing_stock FROM inventory
@@ -2565,6 +2552,93 @@ def import_batch_edit():
     conn.close()
     flash(f'Da cap nhat {updated} phieu!', 'success')
     return redirect(url_for('import_page', month=month))
+
+
+# Xu ly thanh toan tu trang batch
+@app.route('/import/pay', methods=['POST'])
+@login_required
+def import_pay():
+    pay_date = request.form.get('pay_date', '').strip()
+    supplier_id = request.form.get('supplier_id', '').strip()
+    pay_amount = float(request.form.get('pay_amount', 0) or 0)
+    pay_note = request.form.get('pay_note', '').strip()
+    month = request.form.get('month', datetime.date.today().strftime('%Y-%m'))
+
+    if not pay_date or not supplier_id or pay_amount <= 0:
+        flash('Vui long dien day du thong tin thanh toan!', 'danger')
+        return redirect(url_for('import_batch', month=month))
+
+    conn = get_db()
+    c = conn.cursor()
+
+    # Lay cac phieu chua tra het cua NCC nay
+    c.execute('''SELECT id, total_price, paid_amount
+        FROM imports
+        WHERE supplier_id = ? AND (paid_amount IS NULL OR paid_amount < total_price)
+        ORDER BY date ASC''',
+        (int(supplier_id),))
+    unpaid = list(c.fetchall())
+
+    if not unpaid:
+        flash('Khong co phieu nao chua thanh toan cho NCC nay!', 'warning')
+        conn.close()
+        return redirect(url_for('import_batch', month=month))
+
+    remaining = pay_amount
+    updated_count = 0
+    payment_details = []
+
+    for row in unpaid:
+        import_id = row['id']
+        total_price = float(row['total_price'] or 0)
+        current_paid = float(row['paid_amount'] or 0)
+        need = total_price - current_paid
+
+        if need <= 0:
+            continue
+
+        if remaining >= need:
+            # Tra du
+            remaining -= need
+            new_paid = total_price
+        else:
+            # Tra thieu
+            new_paid = current_paid + remaining
+            remaining = 0
+
+        # Cap nhat paid_details
+        c.execute('SELECT paid_details, payment_count FROM imports WHERE id = ?', (import_id,))
+        old = c.fetchone()
+        old_details = old['paid_details'] or ''
+        old_count = old['payment_count'] or 0
+
+        # Tach details cu, them payment moi
+        details_parts = []
+        if old_details:
+            details_parts = old_details.split(';')
+        details_parts.append(f'{pay_date}:{int(new_paid - current_paid)}')
+
+        new_count = old_count + 1
+
+        c.execute('''UPDATE imports SET paid_amount = ?, payment_count = ?,
+            paid_details = ? WHERE id = ?''',
+            (new_paid, new_count, ';'.join(details_parts), import_id))
+        updated_count += 1
+        payment_details.append(f'{new_paid - current_paid}')
+
+        if remaining <= 0:
+            break
+
+    conn.commit()
+    conn.close()
+
+    if updated_count > 0:
+        paid_str = pay_amount - remaining
+        flash(f'Da thanh toan {updated_count} phieu, tong {int(paid_str):,} VND!', 'success')
+    else:
+        flash('Khong co phieu nao duoc cap nhat!', 'warning')
+
+    return redirect(url_for('import_batch', month=month))
 
 
 # Export Excel phan Nhap
