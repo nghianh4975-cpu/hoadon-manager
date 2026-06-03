@@ -2405,7 +2405,12 @@ def import_batch():
                 if mat:
                     material_id = mat['id']
                     # Neu material chua co nhom, gan nhom cua dong nay
-                    if (mat['group_id'] is None or mat['group_id'] == '') and effective_group_id:
+                    # Hoac neu user chon global group, luon gan nhom do
+                    if mat['group_id'] is None or mat['group_id'] == '':
+                        if effective_group_id:
+                            c.execute('UPDATE materials SET group_id=? WHERE id=?', (effective_group_id, material_id))
+                    # Neu material da co nhom nhung user chon global group, override
+                    elif effective_group_id:
                         c.execute('UPDATE materials SET group_id=? WHERE id=?', (effective_group_id, material_id))
                     # Cap nhat don vi (luc nao cung update, vi user co the nhap dung don vi)
                     if unit and unit.strip():
